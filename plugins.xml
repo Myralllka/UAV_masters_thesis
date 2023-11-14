@@ -1,0 +1,5 @@
+<library path="lib/libMasters">
+  <class name="masters/Masters" type="masters::Masters" base_class_type="nodelet::Nodelet">
+    <description>masters nodelet</description>
+  </class>
+</library>

@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<package format="2">
+
+    <name>masters</name>
+    <version>1.0.0</version>
+    <description>more_desctription</description>
+
+    <maintainer email="todo@email.com">todo_name</maintainer>
+    <author email="todo@email.com">todo_name</author>
+
+    <license>MIT</license>
+
+    <buildtool_depend>catkin</buildtool_depend>
+
+    <depend>roscpp</depend>
+    <depend>nodelet</depend>
+    <depend>std_msgs</depend>
+    <depend>mrs_lib</depend>
+    <depend>nav_msgs</depend>
+    <depend>geometry_msgs</depend>
+    <depend>visualization_msgs</depend>
+    <depend>image_geometry</depend>
+
+    <export>
+        <!-- The plugins.xml file defines nodelet as a plugin -->
+        <nodelet plugin="${prefix}/plugins.xml"/>
+
+    </export>
+
+</package>
