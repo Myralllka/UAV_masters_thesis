@@ -21,6 +21,7 @@
 /* other important includes */
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/Image.h>
 #include <opencv2/core/eigen.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <boost/circular_buffer.hpp>
@@ -69,11 +70,9 @@ namespace masters {
 
         // | ---------------------- msg callbacks --------------------- |
         [[maybe_unused]] void m_cbk_front_camera_detection(const geometry_msgs::PoseArray &msg);
+        [[maybe_unused]] void m_cbk_front_camera(const sensor_msgs::ImageConstPtr &msg);
 
         // | --------------------- timer callbacks -------------------- |
-        ros::Timer m_tim_uav2cam_projector;
-
-        [[maybe_unused]] void m_tim_cbk_uav2cam_projector([[maybe_unused]] const ros::TimerEvent &ev);
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
@@ -83,13 +82,14 @@ namespace masters {
         ros::Publisher m_pub_viz;
 
         // | ----------------------- subscribers ---------------------- |
-//        ros::Subscriber m_sub_front_cam;
         ros::Subscriber m_sub_front_camera_detection;
+        ros::Subscriber m_sub_front_camera;
 
-        mrs_lib::SubscribeHandler<sensor_msgs::Image> m_handler_camera_image;
 
         // | --------------------- other functions -------------------- |
         static vec3 m_find_intersection_svd(const boost::circular_buffer<std::pair<vec3, vec3>> &data);
+
+        cv::Point2d m_detect_uav(const sensor_msgs::Image::ConstPtr &img);
     };
 
 }  // namespace masters

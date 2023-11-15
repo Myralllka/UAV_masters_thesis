@@ -36,12 +36,12 @@
 
       <param name="eagle_name" type="string" value="$(arg UAV_NAME)"/>
       <param name="target_name" type="string" value="/uav2"/>
-      <param name="history_buffer_size" type="int" value="10"/>
+      <param name="history_buffer_size" type="int" value="3"/>
 
       <param name="front_camera" type="string" value="/uav91/bluefox_front"/>
       <param name="mean" type="double" value="0.0"/>
-      <param name="deviation" type="double" value="0.0"/>
-      <param name="triang_update_th" type="double" value="2"/>
+      <param name="deviation" type="double" value="5"/>
+      <param name="triang_update_th" type="double" value="4"/>
 
       <!-- ROS parameters config file -->
       <rosparam file="$(find masters)/config/default.yaml" />

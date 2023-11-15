@@ -11,9 +11,7 @@ Panels:
         - /Image1
         - /PoseArray1
         - /Marker1
-        - /Marker1/Status1
         - /PoseArray2
-        - /PoseArray2/Status1
         - /PoseArray3
       Splitter Ratio: 0.5
     Tree Height: 324
@@ -287,7 +285,7 @@ Visualization Manager:
       Axes Radius: 0.009999999776482582
       Class: rviz/PoseArray
       Color: 255; 25; 0
-      Enabled: true
+      Enabled: false
       Head Length: 0.07000000029802322
       Head Radius: 0.029999999329447746
       Name: PoseArray
@@ -297,7 +295,7 @@ Visualization Manager:
       Shape: Arrow (Flat)
       Topic: /uav91/bluefox_front/detection
       Unreliable: false
-      Value: true
+      Value: false
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /uav91/masters/uav91/detection
@@ -313,13 +311,13 @@ Visualization Manager:
       Class: rviz/PoseArray
       Color: 2; 215; 250
       Enabled: true
-      Head Length: 0.07000000029802322
-      Head Radius: 0.029999999329447746
+      Head Length: 0.20000000298023224
+      Head Radius: 0.30000001192092896
       Name: PoseArray
       Queue Size: 10
-      Shaft Length: 0.23000000417232513
+      Shaft Length: 0
       Shaft Radius: 0.009999999776482582
-      Shape: Arrow (Flat)
+      Shape: Arrow (3D)
       Topic: /uav91/masters/uav91/history_1
       Unreliable: false
       Value: true
@@ -330,13 +328,13 @@ Visualization Manager:
       Class: rviz/PoseArray
       Color: 250; 2; 250
       Enabled: true
-      Head Length: 0.07000000029802322
-      Head Radius: 0.029999999329447746
+      Head Length: 0
+      Head Radius: 0
       Name: PoseArray
       Queue Size: 10
-      Shaft Length: 0.23000000417232513
-      Shaft Radius: 0.009999999776482582
-      Shape: Arrow (Flat)
+      Shaft Length: 0.5
+      Shaft Radius: 0.5
+      Shape: Arrow (3D)
       Topic: /uav91/masters/uav91/history_2
       Unreliable: false
       Value: true
@@ -368,7 +366,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 39.1573486328125
+      Distance: 22.315698623657227
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -376,17 +374,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0.5907487869262695
-        Y: -2.421647548675537
-        Z: -0.2575419545173645
+        X: 1.238960862159729
+        Y: 1.6284351348876953
+        Z: 5.288427829742432
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7647948861122131
+      Pitch: 0.24479512870311737
       Target Frame: <Fixed Frame>
-      Yaw: 1.9290478229522705
+      Yaw: 1.7971934080123901
     Saved: ~
 Window Geometry:
   Camera:

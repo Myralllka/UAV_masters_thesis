@@ -46,10 +46,10 @@ if __name__ == "__main__":
     # Example usage:
     x_center = 10.0  # x-coordinate of the circle center
     y_center = 30.0  # y-coordinate of the circle center
-    z_initial = 4.0  # Initial z-coordinate
-    radius = 2.0  # Radius of the circular path
-    linear_velocity = 1.0  # Desired linear velocity
+    z_initial = 3.5 # Initial z-coordinate
+    radius = 5.0  # Radius of the circular path
+    linear_velocity = 2.0  # Desired linear velocity
 
-    output_file = "desired_trajectory.txt"  # Output file name
+    output_file = "../trajectories/desired_trajectory.txt"  # Output file name
 
     generate_trajectories(x_center, y_center, z_initial, radius, linear_velocity, output_file)
