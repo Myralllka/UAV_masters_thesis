@@ -109,18 +109,18 @@ if __name__ == "__main__":
     output_file = "../trajectories/desired_trajectory.txt"  # Output file name
 
     # Example usage for a circle:
-    # x_center = 10.0  # x-coordinate of the circle center
-    # y_center = 30.0  # y-coordinate of the circle center
-    # z_initial = 3.5  # Initial z-coordinate
-    # radius = 5.0  # Radius of the circular path
-    # linear_velocity = 2.0  # Desired linear velocity
-    # generate_circle(x_center, y_center, z_initial, radius, linear_velocity, output_file)
+    x_center = 10.0  # x-coordinate of the circle center
+    y_center = 30.0  # y-coordinate of the circle center
+    z_initial = 3.5  # Initial z-coordinate
+    radius = 5.0  # Radius of the circular path
+    linear_velocity = 2.0  # Desired linear velocity
+    generate_circle(x_center, y_center, z_initial, radius, linear_velocity, output_file)
 
     # Example usage for a line:
-    p1 = np.array([20.0, 30.0, 5.0])
-    p2 = np.array([0.0, 30.0, 5.0])
-    v = 1
-    generate_line(p1, p2, v, output_file)
+    # p1 = np.array([20.0, 30.0, 5.0])
+    # p2 = np.array([0.0, 30.0, 5.0])
+    # v = 1
+    # generate_line(p1, p2, v, output_file)
 
     # Example of usage for a spiral:
     # p1 = np.array([20.0, 30.0, 3]

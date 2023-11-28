@@ -35,6 +35,9 @@
 namespace masters {
     using vec3 = Eigen::Vector3d;
 
+    using t_hist_vv = boost::circular_buffer<std::pair<vec3, vec3>>;
+    using t_hist_vvt = boost::circular_buffer<std::tuple<vec3, vec3, ros::Time>>;
+
 /* class Masters //{ */
     class Masters : public nodelet::Nodelet {
 
@@ -48,7 +51,7 @@ namespace masters {
         double m_mean;
         double m_stddev;
         double m_upd_th;
-
+        ros::Time m_t0;
         int m_history_bufsize;
 
         /* ros parameters */
@@ -61,7 +64,8 @@ namespace masters {
 
         /* other parameters */
         image_geometry::PinholeCameraModel m_camera_front;
-        boost::circular_buffer<std::pair<vec3, vec3>> m_history;
+        t_hist_vv m_history_linear;
+        t_hist_vvt m_history_velocity;
 
 
         // | --------------------- MRS transformer -------------------- |
@@ -70,6 +74,7 @@ namespace masters {
 
         // | ---------------------- msg callbacks --------------------- |
         [[maybe_unused]] void m_cbk_front_camera_detection(const geometry_msgs::PoseArray &msg);
+
         [[maybe_unused]] void m_cbk_front_camera(const sensor_msgs::ImageConstPtr &msg);
 
         // | --------------------- timer callbacks -------------------- |
@@ -87,7 +92,9 @@ namespace masters {
 
 
         // | --------------------- other functions -------------------- |
-        static vec3 m_find_intersection_svd(const boost::circular_buffer<std::pair<vec3, vec3>> &data);
+        [[maybe_unused]] static vec3 m_find_intersection_svd_static_obj(const t_hist_vv &data);
+
+        [[maybe_unused]] std::pair<vec3, vec3> m_find_intersection_svd_static_velocity_obj(const t_hist_vvt &data);
 
         std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
     };

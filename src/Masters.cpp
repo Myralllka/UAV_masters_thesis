@@ -42,7 +42,7 @@ namespace masters {
             ROS_INFO_ONCE("[%s]: loaded parameters", m_nodename.c_str());
         }
         // | ---------------- some data post-processing --------------- |
-        m_history = boost::circular_buffer<std::pair<vec3, vec3>>(m_history_bufsize);
+        m_history_velocity = t_hist_vvt(m_history_bufsize);
 
         // | ----------------- publishers initialize ------------------ |
         m_pub_image_changed = nh.advertise<sensor_msgs::Image>(m_name_front_camera + "/changed", 1);
@@ -67,6 +67,7 @@ namespace masters {
                 break;
             }
         }
+        m_t0 = ros::Time::now();
 
         m_camera_front.fromCameraInfo(camfront_info);
 
@@ -99,33 +100,33 @@ namespace masters {
         ps2.header.stamp = msg.header.stamp;
         ps1.header.frame_id = m_name_world_origin;
         ps2.header.frame_id = m_name_world_origin;
-        for (const auto &h: m_history) {
+        for (const auto &h: m_history_velocity) {
             geometry_msgs::Pose p;
-            p.position.x = h.first.x();
-            p.position.y = h.first.y();
-            p.position.z = h.first.z();
+            const vec3 v1 = std::get<0>(h);
+            const vec3 v2 = std::get<1>(h);
+            p.position.x = v1.x();
+            p.position.y = v1.y();
+            p.position.z = v1.z();
             ps1.poses.push_back(p);
-
             geometry_msgs::Pose p2;
-            p2.position.x = h.second.x();
-            p2.position.y = h.second.y();
-            p2.position.z = h.second.z();
+            p2.position.x = v2.x();
+            p2.position.y = v2.y();
+            p2.position.z = v2.z();
             ps2.poses.push_back(p2);
         }
         m_pub_history1.publish(ps1);
         m_pub_history2.publish(ps2);
 
-        if (m_history.size() <= 1) {
-            m_history.push_back(std::pair{pos_origin, pos_s});
+        if (m_history_velocity.size() <= 1) {
+            m_history_velocity.push_back(std::tuple{pos_origin, pos_s, msg.header.stamp});
             return;
         }
-        if ((pos_origin - m_history.back().first).norm() > m_upd_th) {
-            m_history.push_back(std::pair{pos_origin, pos_s});
+        if ((pos_origin - std::get<0>(m_history_velocity.back())).norm() > m_upd_th) {
+            m_history_velocity.push_back(std::tuple{pos_origin, pos_s, msg.header.stamp});
         }
-        if (m_history.size() >= 3) {
-
-            auto res = m_find_intersection_svd(m_history);
-            std::cout << res << std::endl;
+        if (m_history_velocity.size() >= 4) {
+            vec3 position, velocity;
+            std::tie(position, velocity) = m_find_intersection_svd_static_velocity_obj(m_history_velocity);
 
             visualization_msgs::Marker marker;
             marker.header.frame_id = m_name_world_origin;
@@ -135,9 +136,9 @@ namespace masters {
             marker.type = visualization_msgs::Marker::SPHERE;
             marker.action = visualization_msgs::Marker::MODIFY;
 
-            marker.pose.position.x = res.x();
-            marker.pose.position.y = res.y();
-            marker.pose.position.z = res.z();
+            marker.pose.position.x = position.x() + velocity.x() * (ros::Time::now() - m_t0).toSec();
+            marker.pose.position.y = position.y() + velocity.x() * (ros::Time::now() - m_t0).toSec();
+            marker.pose.position.z = position.z() + velocity.x() * (ros::Time::now() - m_t0).toSec();
 
             marker.scale.x = 1;
             marker.scale.y = 1;
@@ -228,7 +229,9 @@ namespace masters {
 
 
 // | -------------------- other functions ------------------- |
-    vec3 Masters::m_find_intersection_svd(const boost::circular_buffer<std::pair<vec3, vec3>> &data) {
+
+    [[maybe_unused]] vec3
+    Masters::m_find_intersection_svd_static_obj(const t_hist_vv &data) {
 
         const int n_pts = data.size();
         const int n_r = 3 * n_pts;
@@ -239,7 +242,6 @@ namespace masters {
         Eigen::VectorXd b(n_r);
 
         int r_idx = 0;
-        std::cout << data.size() << std::endl;
         for (const auto &pair: data) {
             const Eigen::Vector3d &Os = pair.first;
             const Eigen::Vector3d &Ds = pair.second;
@@ -259,6 +261,41 @@ namespace masters {
         Eigen::Vector3d intersection = x.segment(0, 3);
 
         return intersection;
+    }
+
+    std::pair<vec3, vec3> Masters::m_find_intersection_svd_static_velocity_obj(const t_hist_vvt &data) {
+        const int n_pts = data.size();
+        const int n_r = 3 * n_pts;
+        const int n_c = 6 + n_pts;
+
+        Eigen::MatrixXd A(n_r, n_c);
+        A.fill(0);
+        Eigen::VectorXd b(n_r);
+
+        int r_idx = 0;
+        for (const auto &pair: data) {
+            const vec3 &Os = std::get<0>(pair);
+            const vec3 &Ds = std::get<1>(pair);
+            const ros::Time t = std::get<2>(pair);
+
+            vec3 ks = Ds - Os;
+
+            A.block(r_idx, 0, 3, 3) = Eigen::Matrix3d::Identity();
+            A.block(r_idx, 3, 3, 3) = Eigen::Matrix3d::Identity() * (t - m_t0).toSec();
+            A.block(r_idx, 6 + r_idx / 3, 3, 1) = ks;
+            b.segment(r_idx, 3) = Os;
+
+            r_idx += 3;
+        }
+//        Eigen::BDCSVD<Eigen::MatrixXd> SVD(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
+        Eigen::JacobiSVD<Eigen::MatrixXd> SVD(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
+
+        Eigen::VectorXd x = SVD.solve(b);
+        // Extract the first 3 elements of x to get the intersection point.
+        vec3 intersection = x.segment(0, 3);
+        vec3 speed = x.segment(3, 3);
+
+        return {intersection, speed};
     }
 
     std::optional<cv::Point2d> Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
