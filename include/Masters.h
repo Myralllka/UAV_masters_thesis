@@ -89,7 +89,7 @@ namespace masters {
         // | --------------------- other functions -------------------- |
         static vec3 m_find_intersection_svd(const boost::circular_buffer<std::pair<vec3, vec3>> &data);
 
-        cv::Point2d m_detect_uav(const sensor_msgs::Image::ConstPtr &img);
+        std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
     };
 
 }  // namespace masters

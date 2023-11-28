@@ -156,7 +156,14 @@ namespace masters {
     [[maybe_unused]] void Masters::m_cbk_front_camera(const sensor_msgs::ImageConstPtr &msg) {
 
         if (not m_is_initialized) return;
-        cv::Point2d detection = m_detect_uav(msg);
+        const auto detection_opt = m_detect_uav(msg);
+        cv::Point2d detection;
+        if (detection_opt.has_value()) {
+            detection = detection_opt.value();
+        } else {
+            ROS_ERROR_THROTTLE(1.0, "[%s]: No detection present;", m_nodename.c_str());
+            return;
+        }
         // in the Camera optical frame
         cv::Point3d ray_to_detection_original = m_camera_front.projectPixelTo3dRay(detection);
         // check for NaNs
@@ -254,8 +261,7 @@ namespace masters {
         return intersection;
     }
 
-    cv::Point2d Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
-
+    std::optional<cv::Point2d> Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
         geometry_msgs::TransformStamped T_eagle2drone;
         auto T_eagle2drone_opt = m_transformer.getTransform("uav2/fcu",
                                                             "uav91/bluefox_front_optical",
@@ -264,17 +270,18 @@ namespace masters {
             T_eagle2drone = T_eagle2drone_opt.value();
         } else {
             ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR wrong detection");
+            return {};
         }
         Eigen::Vector3d vec = Eigen::Vector3d(tf2::transformToEigen(T_eagle2drone.transform).translation().data());
-
-
+        if (vec.z() < 0) {
+            return {};
+        }
         auto pt_ideal = m_camera_front.project3dToPixel(cv::Point3d(vec.x(), vec.y(), vec.z()));
-
         std::random_device rseed;
         std::mt19937 rng(rseed());
         std::normal_distribution<double> dist(m_mean, m_stddev);
         double e_x = dist(rng), e_y = dist(rng);
-        return {pt_ideal.x + e_x, pt_ideal.y + e_y};
+        return cv::Point2d{pt_ideal.x + e_x, pt_ideal.y + e_y};
     }
 }  // namespace masters
 
