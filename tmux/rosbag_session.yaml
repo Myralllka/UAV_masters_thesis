@@ -1,0 +1,26 @@
+# do not modify these
+root: ./
+name: rosbag
+socket_name: mrs
+attach: true
+tmux_options: -f /etc/ctu-mrs/tmux.conf
+# you can modify these
+pre_window: export UAV_NAME=uav91; export RUN_TYPE=simulation; export UAV_TYPE=x500; export EAGLE_GR_DIR=`rospack find eagle_gazebo_resources`
+startup_window: masters
+windows:
+  - roscore:
+      layout: tiled
+      panes:
+        - roscore
+  - rosbag:
+      layout: tiled
+      panes:
+        - waitForRos; rosparam set use_sim_time true; rosbag play $ROSBAG_PATH --clock
+  - rviz:
+      layout: tiled
+      panes:
+        - waitForControl; rviz -d `rospack find masters`/rviz/testing.rviz
+  - masters:
+      layout: tiled
+      panes:
+        - export UAV_NAME=uav91; export RUN_TYPE=simulation; waitForControl; roslaunch masters masters.launch

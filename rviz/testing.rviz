@@ -6,6 +6,7 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
+        - /TF1/Frames1
         - /Axes1
         - /Axes2
         - /Image1
@@ -64,93 +65,93 @@ Visualization Manager:
       Filter (whitelist): ""
       Frame Timeout: 15
       Frames:
-        All Enabled: true
+        All Enabled: false
         base_link:
-          Value: true
+          Value: false
         base_link_frd:
-          Value: true
+          Value: false
         common_origin:
           Value: true
         map:
-          Value: true
+          Value: false
         map_ned:
-          Value: true
+          Value: false
         odom:
-          Value: true
+          Value: false
         odom_ned:
-          Value: true
+          Value: false
         uav2/fcu:
-          Value: true
+          Value: false
         uav2/fcu_untilted:
-          Value: true
+          Value: false
         uav2/garmin:
-          Value: true
+          Value: false
         uav2/garmin_agl_origin:
-          Value: true
+          Value: false
         uav2/gps_baro_local_origin:
-          Value: true
+          Value: false
         uav2/gps_baro_origin:
-          Value: true
+          Value: false
         uav2/gps_baro_origin_att_only:
-          Value: true
+          Value: false
         uav2/gps_garmin_local_origin:
-          Value: true
+          Value: false
         uav2/gps_garmin_origin:
-          Value: true
+          Value: false
         uav2/gps_garmin_origin_att_only:
-          Value: true
+          Value: false
         uav2/ground_truth_local_origin:
-          Value: true
+          Value: false
         uav2/ground_truth_origin:
-          Value: true
+          Value: false
         uav2/local_origin:
-          Value: true
+          Value: false
         uav2/rtk_antenna:
-          Value: true
+          Value: false
         uav2/utm_origin:
-          Value: true
+          Value: false
         uav2/world_origin:
-          Value: true
+          Value: false
         uav91/bluefox_down:
-          Value: true
+          Value: false
         uav91/bluefox_down_optical:
-          Value: true
+          Value: false
         uav91/bluefox_front:
-          Value: true
+          Value: false
         uav91/bluefox_front_optical:
-          Value: true
+          Value: false
         uav91/fcu:
-          Value: true
+          Value: false
         uav91/fcu_untilted:
-          Value: true
+          Value: false
         uav91/garmin:
-          Value: true
+          Value: false
         uav91/garmin_agl_origin:
-          Value: true
+          Value: false
         uav91/gps_baro_local_origin:
-          Value: true
+          Value: false
         uav91/gps_baro_origin:
-          Value: true
+          Value: false
         uav91/gps_baro_origin_att_only:
-          Value: true
+          Value: false
         uav91/gps_garmin_local_origin:
-          Value: true
+          Value: false
         uav91/gps_garmin_origin:
-          Value: true
+          Value: false
         uav91/gps_garmin_origin_att_only:
-          Value: true
+          Value: false
         uav91/ground_truth_local_origin:
-          Value: true
+          Value: false
         uav91/ground_truth_origin:
-          Value: true
+          Value: false
         uav91/local_origin:
-          Value: true
+          Value: false
         uav91/rtk_antenna:
-          Value: true
+          Value: false
         uav91/utm_origin:
-          Value: true
+          Value: false
         uav91/world_origin:
-          Value: true
+          Value: false
       Marker Alpha: 1
       Marker Scale: 1
       Name: TF
@@ -245,6 +246,7 @@ Visualization Manager:
         Grid: true
         Image: true
         Marker: true
+        MarkerArray: true
         PoseArray: true
         TF: true
         Value: true
@@ -338,6 +340,14 @@ Visualization Manager:
       Topic: /uav91/masters/uav91/history_2
       Unreliable: false
       Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /uav91/control_manager/mpc_tracker/trajectory_processed/markers
+      Name: MarkerArray
+      Namespaces:
+        "": true
+      Queue Size: 100
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -366,7 +376,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 22.315698623657227
+      Distance: 58.19387435913086
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -374,17 +384,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 1.238960862159729
-        Y: 1.6284351348876953
-        Z: 5.288427829742432
+        X: 1.6513466835021973
+        Y: 0.8855540752410889
+        Z: -0.23285718262195587
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.24479512870311737
+      Pitch: 1.5697963237762451
       Target Frame: <Fixed Frame>
-      Yaw: 1.7971934080123901
+      Yaw: 0.027215540409088135
     Saved: ~
 Window Geometry:
   Camera:

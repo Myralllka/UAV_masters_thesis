@@ -1,4 +1,5 @@
 .idea
+rosbags
 cmake-build-debug
 build
 logs

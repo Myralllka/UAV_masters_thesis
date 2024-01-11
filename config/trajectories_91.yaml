@@ -3,6 +3,7 @@ trajectory:
   frame_id: "uav91/world_origin"
   dt: 0.2
   delay: 0.0
+
   loop: false
   use_heading: true
   fly_now: false

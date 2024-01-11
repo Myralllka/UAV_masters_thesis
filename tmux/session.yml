@@ -33,7 +33,7 @@ windows:
   - hw_api:
       layout: tiled
       panes:
-        - export UAV_NAME=uav91; waitForTime; roslaunch mrs_uav_px4_api api.launch
+        - export UAV_NAME=uav91; waitForRos; rosparam set use_sim_time true; waitForTime; roslaunch mrs_uav_px4_api api.launch
         - export UAV_NAME=uav2;  waitForTime; roslaunch mrs_uav_px4_api api.launch
   - core:
       layout: tiled
@@ -65,7 +65,7 @@ windows:
   - trajectory:
       layout: tiled
       panes:
-        - history -s roslaunch mrs_uav_trajectory_loader load.launch config:=`rospack find masters`/config/trajectories.yaml path:=`rospack find masters`
+        - history -s "export UAV_NAME=uav91; roslaunch mrs_uav_trajectory_loader load.launch config:=`rospack find masters`/config/trajectories_91.yaml path:=`rospack find masters`; export UAV_NAME=uav2 ;roslaunch mrs_uav_trajectory_loader load.launch config:=`rospack find masters`/config/trajectories_2.yaml path:=`rospack find masters`"
   - tf_connector:
       layout: tiled
       panes:

@@ -45,8 +45,8 @@ namespace masters {
         m_history_velocity = t_hist_vvt(m_history_bufsize);
 
         // | ----------------- publishers initialize ------------------ |
-        m_pub_image_changed = nh.advertise<sensor_msgs::Image>(m_name_front_camera + "/changed", 1);
-        m_pub_front_camera_detection = nh.advertise<geometry_msgs::PoseArray>(m_name_front_camera + "/detection", 1);
+        m_pub_image_changed = nh.advertise<sensor_msgs::Image>("changed", 1);
+        m_pub_front_camera_detection = nh.advertise<geometry_msgs::PoseArray>("detection", 1);
         m_pub_history1 = nh.advertise<geometry_msgs::PoseArray>(m_name_eagle + "/history_1", 1);
         m_pub_history2 = nh.advertise<geometry_msgs::PoseArray>(m_name_eagle + "/history_2", 1);
         m_pub_viz = nh.advertise<visualization_msgs::Marker>(m_name_eagle + "/detection", 1);
@@ -136,9 +136,10 @@ namespace masters {
             marker.type = visualization_msgs::Marker::SPHERE;
             marker.action = visualization_msgs::Marker::MODIFY;
 
-            marker.pose.position.x = position.x() + velocity.x() * (ros::Time::now() - m_t0).toSec();
-            marker.pose.position.y = position.y() + velocity.x() * (ros::Time::now() - m_t0).toSec();
-            marker.pose.position.z = position.z() + velocity.x() * (ros::Time::now() - m_t0).toSec();
+            const auto time_now = msg.header.stamp;
+            marker.pose.position.x = position.x() + velocity.x() * (time_now - m_t0).toSec();
+            marker.pose.position.y = position.y() + velocity.x() * (time_now - m_t0).toSec();
+            marker.pose.position.z = position.z() + velocity.x() * (time_now - m_t0).toSec();
 
             marker.scale.x = 1;
             marker.scale.y = 1;
@@ -237,8 +238,8 @@ namespace masters {
         const int n_r = 3 * n_pts;
         const int n_c = 3 + n_pts;
 
-        Eigen::MatrixXd A(n_r, n_c);
-        A.fill(0);
+        Eigen::MatrixXd A = Eigen::MatrixXd::Zero(n_r, n_c);
+        // A.fill(0);
         Eigen::VectorXd b(n_r);
 
         int r_idx = 0;
@@ -248,9 +249,9 @@ namespace masters {
 
             Eigen::Vector3d ks = Ds - Os;
 
-            A.block(r_idx, 0, 3, 3) = Eigen::Matrix3d::Identity();
-            A.block(r_idx, 3 + r_idx / 3, 3, 1) = ks;
-            b.segment(r_idx, 3) = Os;
+            A.block<3, 3>(r_idx, 0) = Eigen::Matrix3d::Identity();
+            A.block<3, 1>(r_idx, 3 + r_idx / 3) = -ks;
+            b.segment<3>(r_idx) = Os;
 
             r_idx += 3;
         }
@@ -258,7 +259,7 @@ namespace masters {
 
         Eigen::VectorXd x = SVD.solve(b);
         // Extract the first 3 elements of x to get the intersection point.
-        Eigen::Vector3d intersection = x.segment(0, 3);
+        Eigen::Vector3d intersection = x.head<3>();
 
         return intersection;
     }
@@ -268,8 +269,7 @@ namespace masters {
         const int n_r = 3 * n_pts;
         const int n_c = 6 + n_pts;
 
-        Eigen::MatrixXd A(n_r, n_c);
-        A.fill(0);
+        Eigen::MatrixXd A = Eigen::MatrixXd::Zero(n_r, n_c);
         Eigen::VectorXd b(n_r);
 
         int r_idx = 0;
@@ -278,22 +278,22 @@ namespace masters {
             const vec3 &Ds = std::get<1>(pair);
             const ros::Time t = std::get<2>(pair);
 
-            vec3 ks = Ds - Os;
+            const vec3 ks = Ds - Os;
 
-            A.block(r_idx, 0, 3, 3) = Eigen::Matrix3d::Identity();
-            A.block(r_idx, 3, 3, 3) = Eigen::Matrix3d::Identity() * (t - m_t0).toSec();
-            A.block(r_idx, 6 + r_idx / 3, 3, 1) = ks;
-            b.segment(r_idx, 3) = Os;
+            A.block<3, 3>(r_idx, 0) = Eigen::Matrix3d::Identity();
+            A.block<3, 3>(r_idx, 3) = Eigen::Matrix3d::Identity() * (t - m_t0).toSec();
+            A.block<3, 1>(r_idx, 6 + r_idx / 3) = ks;
+            b.segment<3>(r_idx) = Os;
 
             r_idx += 3;
         }
 //        Eigen::BDCSVD<Eigen::MatrixXd> SVD(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
         Eigen::JacobiSVD<Eigen::MatrixXd> SVD(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
 
-        Eigen::VectorXd x = SVD.solve(b);
+        const Eigen::VectorXd x = SVD.solve(b);
         // Extract the first 3 elements of x to get the intersection point.
-        vec3 intersection = x.segment(0, 3);
-        vec3 speed = x.segment(3, 3);
+        const vec3 intersection = x.segment<3>(0);
+        const vec3 speed = x.segment<3>(3);
 
         return {intersection, speed};
     }
@@ -318,6 +318,7 @@ namespace masters {
         std::mt19937 rng(rseed());
         std::normal_distribution<double> dist(m_mean, m_stddev);
         double e_x = dist(rng), e_y = dist(rng);
+        // TODO: check for image boundaries
         return cv::Point2d{pt_ideal.x + e_x, pt_ideal.y + e_y};
     }
 }  // namespace masters
