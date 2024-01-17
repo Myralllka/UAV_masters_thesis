@@ -6,7 +6,11 @@
 #include <ros/package.h>
 #include <nodelet/nodelet.h>
 #include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/PointStamped.h>
 #include <visualization_msgs/Marker.h>
+#include <image_geometry/pinhole_camera_model.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <sensor_msgs/Image.h>
 
 /* some STL includes */
 #include <cstdlib>
@@ -19,9 +23,6 @@
 #include <mrs_lib/subscribe_handler.h>
 
 /* other important includes */
-#include <image_geometry/pinhole_camera_model.h>
-#include <sensor_msgs/CameraInfo.h>
-#include <sensor_msgs/Image.h>
 #include <opencv2/core/eigen.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <boost/circular_buffer.hpp>
@@ -48,55 +49,101 @@ namespace masters {
     private:
         /* flags */
         bool m_is_initialized = false;
+        bool m_is_kalman_initialized = false;
         double m_mean;
         double m_stddev;
         double m_upd_th;
+        double m_dt = 0.1;
         ros::Time m_t0;
         int m_history_bufsize;
 
         /* ros parameters */
 //        std::string m_uav_name;
         std::string m_name_eagle;
+        std::string m_name_front_camera;
+        std::string m_name_front_camera_tf;
         std::string m_name_target;
         std::string m_name_world_origin;
         std::string m_nodename = "Masters";
-        std::string m_name_front_camera;
 
         /* other parameters */
         image_geometry::PinholeCameraModel m_camera_front;
         t_hist_vv m_history_linear;
         t_hist_vvt m_history_velocity;
 
+        /* Kalman filter */
+        Eigen::Matrix<double, 6, 1> m_state_interceptor;
+        Eigen::Matrix<double, 6, 1> m_x_k;
+        Eigen::Matrix<double, 6, 6> m_P_k;
+        std::mutex m_detection_mut;
+        ros::Time m_detecton_time, m_last_kalman_time;
+        Eigen::Vector3d m_detection_vec;
 
         // | --------------------- MRS transformer -------------------- |
 
         mrs_lib::Transformer m_transformer;
 
         // | ---------------------- msg callbacks --------------------- |
-        [[maybe_unused]] void m_cbk_front_camera_detection(const geometry_msgs::PoseArray &msg);
+        [[maybe_unused]] void m_cbk_detection(const geometry_msgs::PointStamped &msg);
 
         [[maybe_unused]] void m_cbk_front_camera(const sensor_msgs::ImageConstPtr &msg);
 
         // | --------------------- timer callbacks -------------------- |
+        void m_tim_cbk_kalman(const ros::TimerEvent &ev);
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
-        ros::Publisher m_pub_front_camera_detection;
+//        ros::Publisher m_pub_front_camera_detection;
         ros::Publisher m_pub_history1;
         ros::Publisher m_pub_history2;
         ros::Publisher m_pub_viz;
+        ros::Publisher m_pub_detection;
 
         // | ----------------------- subscribers ---------------------- |
-        ros::Subscriber m_sub_front_camera_detection;
+        ros::Subscriber m_sub_detection;
         ros::Subscriber m_sub_front_camera;
 
+        ros::Timer m_tim_kalman;
 
         // | --------------------- other functions -------------------- |
-        [[maybe_unused]] static vec3 m_find_intersection_svd_static_obj(const t_hist_vv &data);
-
-        [[maybe_unused]] std::pair<vec3, vec3> m_find_intersection_svd_static_velocity_obj(const t_hist_vvt &data);
+//        [[maybe_unused]] std::pair<vec3, vec3> m_find_intersection_svd_static_velocity_obj(const t_hist_vvt &data);
 
         std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
+
+
+        std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
+        plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,
+                     const Eigen::Matrix<double, 6, 6> &Pk_1,
+                     const Eigen::Matrix<double, 6, 1> &x_i,
+                     const Eigen::Matrix<double, 6, 1> &x_i_,
+                     const double &dt);
+
+        std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
+        plkf_correct(const Eigen::Matrix<double, 6, 1> &xk_,
+                     const Eigen::Matrix<double, 6, 6> &Pk_,
+                     const Eigen::Vector3d &lmb);
+
+        // https://gist.github.com/javidcf/25066cf85e71105d57b6
+        template<class MatT>
+        Eigen::Matrix<typename MatT::Scalar, MatT::ColsAtCompileTime, MatT::RowsAtCompileTime>
+        pseudoinverse(const MatT &mat,
+                      typename MatT::Scalar tolerance = typename MatT::Scalar{1e-4}) // choose appropriately
+        {
+            typedef typename MatT::Scalar Scalar;
+            auto svd = mat.jacobiSvd(Eigen::ComputeFullU | Eigen::ComputeFullV);
+            const auto &singularValues = svd.singularValues();
+            Eigen::Matrix<Scalar, MatT::ColsAtCompileTime, MatT::RowsAtCompileTime> singularValuesInv(mat.cols(),
+                                                                                                      mat.rows());
+            singularValuesInv.setZero();
+            for (unsigned int i = 0; i < singularValues.size(); ++i) {
+                if (singularValues(i) > tolerance) {
+                    singularValuesInv(i, i) = Scalar{1} / singularValues(i);
+                } else {
+                    singularValuesInv(i, i) = Scalar{0};
+                }
+            }
+            return svd.matrixV() * singularValuesInv * svd.matrixU().adjoint();
+        }
     };
 
 }  // namespace masters

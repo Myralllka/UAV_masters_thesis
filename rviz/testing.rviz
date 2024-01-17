@@ -65,93 +65,93 @@ Visualization Manager:
       Filter (whitelist): ""
       Frame Timeout: 15
       Frames:
-        All Enabled: false
+        All Enabled: true
         base_link:
-          Value: false
+          Value: true
         base_link_frd:
-          Value: false
+          Value: true
         common_origin:
           Value: true
         map:
-          Value: false
+          Value: true
         map_ned:
-          Value: false
+          Value: true
         odom:
-          Value: false
+          Value: true
         odom_ned:
-          Value: false
+          Value: true
         uav2/fcu:
-          Value: false
+          Value: true
         uav2/fcu_untilted:
-          Value: false
+          Value: true
         uav2/garmin:
-          Value: false
+          Value: true
         uav2/garmin_agl_origin:
-          Value: false
+          Value: true
         uav2/gps_baro_local_origin:
-          Value: false
+          Value: true
         uav2/gps_baro_origin:
-          Value: false
+          Value: true
         uav2/gps_baro_origin_att_only:
-          Value: false
+          Value: true
         uav2/gps_garmin_local_origin:
-          Value: false
+          Value: true
         uav2/gps_garmin_origin:
-          Value: false
+          Value: true
         uav2/gps_garmin_origin_att_only:
-          Value: false
+          Value: true
         uav2/ground_truth_local_origin:
-          Value: false
+          Value: true
         uav2/ground_truth_origin:
-          Value: false
+          Value: true
         uav2/local_origin:
-          Value: false
+          Value: true
         uav2/rtk_antenna:
-          Value: false
+          Value: true
         uav2/utm_origin:
-          Value: false
+          Value: true
         uav2/world_origin:
-          Value: false
+          Value: true
         uav91/bluefox_down:
-          Value: false
+          Value: true
         uav91/bluefox_down_optical:
-          Value: false
+          Value: true
         uav91/bluefox_front:
-          Value: false
+          Value: true
         uav91/bluefox_front_optical:
-          Value: false
+          Value: true
         uav91/fcu:
-          Value: false
+          Value: true
         uav91/fcu_untilted:
-          Value: false
+          Value: true
         uav91/garmin:
-          Value: false
+          Value: true
         uav91/garmin_agl_origin:
-          Value: false
+          Value: true
         uav91/gps_baro_local_origin:
-          Value: false
+          Value: true
         uav91/gps_baro_origin:
-          Value: false
+          Value: true
         uav91/gps_baro_origin_att_only:
-          Value: false
+          Value: true
         uav91/gps_garmin_local_origin:
-          Value: false
+          Value: true
         uav91/gps_garmin_origin:
-          Value: false
+          Value: true
         uav91/gps_garmin_origin_att_only:
-          Value: false
+          Value: true
         uav91/ground_truth_local_origin:
-          Value: false
+          Value: true
         uav91/ground_truth_origin:
-          Value: false
+          Value: true
         uav91/local_origin:
-          Value: false
+          Value: true
         uav91/rtk_antenna:
-          Value: false
+          Value: true
         uav91/utm_origin:
-          Value: false
+          Value: true
         uav91/world_origin:
-          Value: false
+          Value: true
       Marker Alpha: 1
       Marker Scale: 1
       Name: TF
@@ -266,7 +266,7 @@ Visualization Manager:
       Length: 1
       Name: Axes
       Radius: 0.10000000149011612
-      Reference Frame: uav91/bluefox_front_optical
+      Reference Frame: uav91/bluefox_front
       Show Trail: false
       Value: true
     - Class: rviz/Image
@@ -304,6 +304,7 @@ Visualization Manager:
       Name: Marker
       Namespaces:
         my_namespace: true
+        my_namespace_detect: true
       Queue Size: 100
       Value: true
     - Alpha: 1
@@ -376,7 +377,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 58.19387435913086
+      Distance: 30.939794540405273
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -384,17 +385,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 1.6513466835021973
-        Y: 0.8855540752410889
-        Z: -0.23285718262195587
+        X: -8.67590045928955
+        Y: 3.650221347808838
+        Z: -0.8977373838424683
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.5697963237762451
+      Pitch: 0.589795708656311
       Target Frame: <Fixed Frame>
-      Yaw: 0.027215540409088135
+      Yaw: 3.5853967666625977
     Saved: ~
 Window Geometry:
   Camera:

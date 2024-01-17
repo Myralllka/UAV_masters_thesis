@@ -81,8 +81,8 @@ if __name__ == "__main__":
     x_center = 10.0  # x-coordinate of the circle center
     y_center = 30.0  # y-coordinate of the circle center
     z_initial = 5  # Initial z-coordinate
-    radius = 15  # Radius of the circular path
-    linear_velocity = 6  # Desired linear velocity
+    radius = 10  # Radius of the circular path
+    linear_velocity = 2  # Desired linear velocity
     generate_circle(x_center, y_center, z_initial, radius, linear_velocity, output_file)
 
     # Example usage for a line:
