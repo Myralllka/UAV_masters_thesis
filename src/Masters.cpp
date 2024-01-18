@@ -109,18 +109,29 @@ namespace masters {
         }
         cv::Point3d td_ray = m_camera_front.projectPixelTo3dRay({msg.point.x, msg.point.y});
 
-        auto T_optical2normal_opt = m_transformer.transformAsVector(m_name_front_camera_tf,
-                                                                    Eigen::Vector3d{td_ray.x, td_ray.y, td_ray.z},
-                                                                    m_name_front_camera_tf + "_optical",
-                                                                    msg.header.stamp);
+        auto T_optical2normal_opt = m_transformer.transformAsPoint(m_name_front_camera_tf + "_optical",
+                                                                   Eigen::Vector3d{td_ray.x, td_ray.y, td_ray.z},
+                                                                   m_name_front_camera_tf,
+                                                                   msg.header.stamp);
         if (T_optical2normal_opt.has_value()) {
-            auto t_normal = T_optical2normal_opt.value();
+            Eigen::Vector3d t_normal = T_optical2normal_opt.value();
+            auto T_detection = m_transformer.transformAsVector(m_name_front_camera_tf,
+                                                               t_normal,
+                                                               m_name_world_origin,
+                                                               msg.header.stamp);
+            if (T_detection.has_value()) {
+                t_normal.x() = T_detection->x();
+                t_normal.y() = T_detection->y();
+                t_normal.z() = T_detection->z();
+            } else {
+                ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR no transformation from eagle to world");
+            }
+
             {
                 std::lock_guard<std::mutex> lt(m_detection_mut);
                 m_detection_vec = Eigen::Vector3d{t_normal.x(),
                                                   t_normal.y(),
                                                   t_normal.z()};
-                std::cout << m_detection_vec << std::endl;
                 m_detecton_time = msg.header.stamp;
             }
         } else {
@@ -212,10 +223,9 @@ namespace masters {
             m_is_kalman_initialized = true;
         }
 
-
         visualization_msgs::Marker marker_predict, marker_detect;
         marker_predict.header.frame_id = m_name_world_origin;
-        marker_predict.header.stamp = ev.current_real;
+        marker_predict.header.stamp = ev.current_expected;
         marker_predict.ns = "my_namespace";
         marker_predict.id = 0;
         marker_predict.type = visualization_msgs::Marker::SPHERE;
@@ -233,28 +243,30 @@ namespace masters {
         m_pub_viz.publish(marker_predict);
 
         marker_detect.header.frame_id = m_name_world_origin;
-        marker_detect.header.stamp = ev.current_real;
+        marker_detect.header.stamp = ev.current_expected;
         marker_detect.ns = "my_namespace_detect";
         marker_detect.id = 1;
-        marker_detect.type = visualization_msgs::Marker::LINE_STRIP;
+        marker_detect.type = visualization_msgs::Marker::ARROW;
         marker_detect.action = visualization_msgs::Marker::MODIFY;
         marker_detect.pose.position.x = m_state_interceptor.x();
         marker_detect.pose.position.y = m_state_interceptor.y();
         marker_detect.pose.position.z = m_state_interceptor.z();
         std::vector<geometry_msgs::Point> points;
         geometry_msgs::Point gpt1, gpt2;
-        gpt1.x = m_state_interceptor.x();
-        gpt1.y = m_state_interceptor.y();
-        gpt1.z = m_state_interceptor.z();
-        gpt2.x = m_state_interceptor.x() + m_detection_vec.x();
-        gpt2.y = m_state_interceptor.y() + m_detection_vec.y();
-        gpt2.z = m_state_interceptor.z() + m_detection_vec.z();
+        int cst = 5;
+        gpt1.x = 0;
+        gpt1.y = 0;
+        gpt1.z = 0;
+        gpt2.x = m_detection_vec.x() * cst;
+        gpt2.y = m_detection_vec.y() * cst;
+        gpt2.z = m_detection_vec.z() * cst;
         points.push_back(gpt1);
         points.push_back(gpt2);
         marker_detect.points = points;
-        marker_detect.scale.x = 1;
-        marker_detect.scale.y = 1;
+        marker_detect.scale.x = 0.1;
+        marker_detect.scale.y = 0.2;
         marker_detect.scale.z = 1;
+
         marker_detect.color.a = 1.0; // Don't forget to set the alpha!
         marker_detect.color.r = 0.0;
         marker_detect.color.g = 1.0;
