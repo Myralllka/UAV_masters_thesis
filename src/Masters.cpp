@@ -95,47 +95,22 @@ namespace masters {
     [[maybe_unused]] void Masters::m_cbk_detection(const geometry_msgs::PointStamped &msg) {
 
         // find the eagle pose
-        auto T_eagle2world_opt = m_transformer.getTransform(m_name_front_camera_tf,
-                                                            m_name_world_origin,
-                                                            msg.header.stamp);
-        Eigen::Vector3d p_eagle;
-        if (T_eagle2world_opt.has_value()) {
-            auto T_eagle2world = T_eagle2world_opt.value().transform.translation;
-            p_eagle.x() = T_eagle2world.x;
-            p_eagle.y() = T_eagle2world.y;
-            p_eagle.z() = T_eagle2world.z;
-        } else {
-            ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR no transformation from eagle to world");
-        }
-        cv::Point3d td_ray = m_camera_front.projectPixelTo3dRay({msg.point.x, msg.point.y});
+        auto pt_rect = m_camera_front.rectifyPoint({msg.point.x, msg.point.y});
+        cv::Point3d td_ray = m_camera_front.projectPixelTo3dRay(pt_rect);
+        auto T_msg_frame2world_opt = m_transformer.transformAsVector(msg.header.frame_id,
+                                                                     Eigen::Vector3d{td_ray.x, td_ray.y, td_ray.z},
+                                                                     m_name_world_origin,
+                                                                     msg.header.stamp);
+        if (T_msg_frame2world_opt.has_value()) {
 
-        auto T_optical2normal_opt = m_transformer.transformAsPoint(m_name_front_camera_tf + "_optical",
-                                                                   Eigen::Vector3d{td_ray.x, td_ray.y, td_ray.z},
-                                                                   m_name_front_camera_tf,
-                                                                   msg.header.stamp);
-        if (T_optical2normal_opt.has_value()) {
-            Eigen::Vector3d t_normal = T_optical2normal_opt.value();
-            auto T_detection = m_transformer.transformAsVector(m_name_front_camera_tf,
-                                                               t_normal,
-                                                               m_name_world_origin,
-                                                               msg.header.stamp);
-            if (T_detection.has_value()) {
-                t_normal.x() = T_detection->x();
-                t_normal.y() = T_detection->y();
-                t_normal.z() = T_detection->z();
-            } else {
-                ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR no transformation from eagle to world");
-            }
-
-            {
-                std::lock_guard<std::mutex> lt(m_detection_mut);
-                m_detection_vec = Eigen::Vector3d{t_normal.x(),
-                                                  t_normal.y(),
-                                                  t_normal.z()};
-                m_detecton_time = msg.header.stamp;
-            }
+            std::lock_guard<std::mutex> lt(m_detection_mut);
+            m_detection_vec = Eigen::Vector3d{T_msg_frame2world_opt->x(),
+                                              T_msg_frame2world_opt->y(),
+                                              T_msg_frame2world_opt->z()}.normalized();
+            m_detecton_time = msg.header.stamp;
         } else {
-            ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR no transformation from eagle to world");
+            ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR no transformation from " << msg.header.frame_id << " to "
+                                 << m_name_world_origin);
         }
     }
 
@@ -173,6 +148,7 @@ namespace masters {
         ROS_INFO("[%s]: A mat", m_nodename.c_str());
 
         // Find the drone's position in worlds coordinate frame
+        // TODO: give timeout for transformer
         auto T_eagle2world_opt = m_transformer.getTransform(m_name_front_camera_tf,
                                                             m_name_world_origin,
                                                             ros::Time(0)); // TODO: use real time
@@ -194,8 +170,18 @@ namespace masters {
         if (m_is_kalman_initialized) {
             ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
             // New position and new velocity
+
+            //TODO: odometry UAV state
             state_interceptor_new.segment<3>(0) = p1;
             state_interceptor_new.segment<3>(3) = (p1 - m_state_interceptor.segment<3>(0)) / m_dt;
+
+            // Predict always
+            ROS_INFO("[%s]: kalman predict", m_nodename.c_str());
+            std::tie(m_x_k, m_P_k) = plkf_predict(m_x_k,
+                                                  m_P_k,
+                                                  m_state_interceptor,
+                                                  state_interceptor_new,
+                                                  m_dt);
 
             // Correct if possible
             if (m_last_kalman_time < m_detecton_time) {
@@ -205,24 +191,21 @@ namespace masters {
                 m_last_kalman_time = ev.current_real;
             }
 
-            // Predict always
-            ROS_INFO("[%s]: kalman predict", m_nodename.c_str());
-            std::tie(m_x_k, m_P_k) = plkf_predict(m_x_k,
-                                                  m_P_k,
-                                                  m_state_interceptor,
-                                                  state_interceptor_new,
-                                                  m_dt);
         } else {
             // initialise
             ROS_INFO("[%s]: kalman initialise", m_nodename.c_str());
+            // TODO: use odometry
             state_interceptor_new.segment<3>(0) = p1;
             state_interceptor_new.segment<3>(3) = Eigen::Vector3d::Ones();
+            //TODO: initialize only when detection exists
             m_x_k = state_interceptor_new;
-            m_P_k = Eigen::Matrix<double, 6, 6>::Identity();
+            m_P_k = Eigen::Matrix<double, 6, 6>::Identity() * 10; // TODO: parametrize
+
             ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
             m_is_kalman_initialized = true;
         }
 
+//        TODO: visualize the target with covariance and velocity, use Odometry msg
         visualization_msgs::Marker marker_predict, marker_detect;
         marker_predict.header.frame_id = m_name_world_origin;
         marker_predict.header.stamp = ev.current_expected;
@@ -283,7 +266,7 @@ namespace masters {
                           const Eigen::Matrix<double, 6, 1> &x_i,
                           const Eigen::Matrix<double, 6, 1> &x_i_,
                           const double &dt) {
-        double sigma_squared = 100; // TODO: parametrise
+        double sigma_squared = 0.1; // TODO: parametrise
         Eigen::Matrix3d Q = Eigen::Matrix3d::Identity() * sigma_squared;
         Eigen::Matrix<double, 6, 6> A;
         Eigen::Matrix<double, 6, 3> B;
@@ -312,13 +295,15 @@ namespace masters {
     Masters::plkf_correct(const Eigen::Matrix<double, 6, 1> &xk_,
                           const Eigen::Matrix<double, 6, 6> &Pk_,
                           const Eigen::Vector3d &lmb) {
-        double sigma_squared = 1; // TODO: parametrise
-        Eigen::Matrix3d Plk = Eigen::Matrix3d::Identity() - lmb * lmb.transpose() / (lmb.norm() * lmb.norm()), Vk;
+        double sigma_squared = 10; // TODO: parametrise
+        const Eigen::Matrix3d Plk = Eigen::Matrix3d::Identity() - lmb * lmb.transpose() / (lmb.norm() * lmb.norm());
         Eigen::Matrix<double, 3, 6> Hk;
+
         double r_ = xk_.segment<0>(3).norm();
-        Vk = r_ * Plk;
+        const Eigen::Matrix3d Vk = r_ * Plk;
         Hk.setZero();
         Hk.block<3, 3>(0, 0) = Plk;
+
         Eigen::Matrix3d S = Eigen::Matrix3d::Identity() * sigma_squared;
         Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * S * Vk.transpose();
         Eigen::Matrix3d pinv = Masters::pseudoinverse(ps);
@@ -330,40 +315,6 @@ namespace masters {
         return {xk1, Pk1};
     }
 
-
-//    std::pair<vec3, vec3> Masters::m_find_intersection_svd_static_velocity_obj(const t_hist_vvt &data) {
-//        const int n_pts = data.size();
-//        const int n_r = 3 * n_pts;
-//        const int n_c = 6 + n_pts;
-//
-//        Eigen::MatrixXd A = Eigen::MatrixXd::Zero(n_r, n_c);
-//        Eigen::VectorXd b(n_r);
-//
-//        int r_idx = 0;
-//        for (const auto &pair: data) {
-//            const vec3 &Os = std::get<0>(pair);
-//            const vec3 &Ds = std::get<1>(pair);
-//            const ros::Time t = std::get<2>(pair);
-//
-//            const vec3 ks = Ds - Os;
-//
-//            A.block<3, 3>(r_idx, 0) = Eigen::Matrix3d::Identity();
-//            A.block<3, 3>(r_idx, 3) = Eigen::Matrix3d::Identity() * (t - m_t0).toSec();
-//            A.block<3, 1>(r_idx, 6 + r_idx / 3) = ks;
-//            b.segment<3>(r_idx) = Os;
-//
-//            r_idx += 3;
-//        }
-////        Eigen::BDCSVD<Eigen::MatrixXd> SVD(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
-//        Eigen::JacobiSVD<Eigen::MatrixXd> SVD(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
-//
-//        const Eigen::VectorXd x = SVD.solve(b);
-//        // Extract the first 3 elements of x to get the intersection point.
-//        const vec3 intersection = x.segment<3>(0);
-//        const vec3 speed = x.segment<3>(3);
-//
-//        return {intersection, speed};
-//    }
 
     std::optional<cv::Point2d> Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
         geometry_msgs::TransformStamped T_eagle2drone;
@@ -385,7 +336,6 @@ namespace masters {
         std::mt19937 rng(rseed());
         std::normal_distribution<double> dist(m_mean, m_stddev);
         double e_x = dist(rng), e_y = dist(rng);
-        // TODO: check for image boundaries
 
         cv::Point2d pt_noisy{pt_ideal.x + e_x, pt_ideal.y + e_y};
         if (pt_noisy.x < 0 or pt_noisy.x > m_camera_front.cameraInfo().width or
