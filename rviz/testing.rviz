@@ -12,8 +12,7 @@ Panels:
         - /Image1
         - /PoseArray1
         - /Marker1
-        - /PoseArray2
-        - /PoseArray3
+        - /Odometry1
       Splitter Ratio: 0.5
     Tree Height: 324
   - Class: rviz/Selection
@@ -247,6 +246,7 @@ Visualization Manager:
         Image: true
         Marker: true
         MarkerArray: true
+        Odometry: true
         PoseArray: true
         TF: true
         Value: true
@@ -307,40 +307,6 @@ Visualization Manager:
         my_namespace_detect: true
       Queue Size: 100
       Value: true
-    - Alpha: 1
-      Arrow Length: 3
-      Axes Length: 0.30000001192092896
-      Axes Radius: 0.009999999776482582
-      Class: rviz/PoseArray
-      Color: 2; 215; 250
-      Enabled: true
-      Head Length: 0.20000000298023224
-      Head Radius: 0.30000001192092896
-      Name: PoseArray
-      Queue Size: 10
-      Shaft Length: 0
-      Shaft Radius: 0.009999999776482582
-      Shape: Arrow (3D)
-      Topic: /uav91/masters/uav91/history_1
-      Unreliable: false
-      Value: true
-    - Alpha: 1
-      Arrow Length: 3
-      Axes Length: 0.30000001192092896
-      Axes Radius: 0.009999999776482582
-      Class: rviz/PoseArray
-      Color: 250; 2; 250
-      Enabled: true
-      Head Length: 0
-      Head Radius: 0
-      Name: PoseArray
-      Queue Size: 10
-      Shaft Length: 0.5
-      Shaft Radius: 0.5
-      Shape: Arrow (3D)
-      Topic: /uav91/masters/uav91/history_2
-      Unreliable: false
-      Value: true
     - Class: rviz/MarkerArray
       Enabled: true
       Marker Topic: /uav91/control_manager/mpc_tracker/trajectory_processed/markers
@@ -348,6 +314,41 @@ Visualization Manager:
       Namespaces:
         "": true
       Queue Size: 100
+      Value: true
+    - Angle Tolerance: 0.10000000149011612
+      Class: rviz/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Keep: 100
+      Name: Odometry
+      Position Tolerance: 0.10000000149011612
+      Queue Size: 10
+      Shape:
+        Alpha: 1
+        Axes Length: 1
+        Axes Radius: 0.10000000149011612
+        Color: 255; 25; 0
+        Head Length: 0.30000001192092896
+        Head Radius: 0.10000000149011612
+        Shaft Length: 1
+        Shaft Radius: 0.05000000074505806
+        Value: Arrow
+      Topic: /uav91/masters/Masters/detected_target
+      Unreliable: false
       Value: true
   Enabled: true
   Global Options:
@@ -377,7 +378,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 30.939794540405273
+      Distance: 31.66632843017578
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -385,17 +386,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: -8.67590045928955
-        Y: 3.650221347808838
-        Z: -0.8977373838424683
+        X: 1.8188471794128418
+        Y: 6.4072699546813965
+        Z: -1.3672584295272827
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.589795708656311
+      Pitch: 0.6197957396507263
       Target Frame: <Fixed Frame>
-      Yaw: 3.5853967666625977
+      Yaw: 4.408568382263184
     Saved: ~
 Window Geometry:
   Camera:

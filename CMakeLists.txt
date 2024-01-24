@@ -16,7 +16,12 @@ find_package(catkin REQUIRED COMPONENTS
         geometry_msgs
         visualization_msgs
         image_geometry
+        dynamic_reconfigure
         )
+
+generate_dynamic_reconfigure_options(
+        config/Dynrec.cfg
+)
 
 find_package(OpenCV REQUIRED)
 find_package(Eigen3 3.3 REQUIRED NO_MODULE)
@@ -31,11 +36,15 @@ include_directories(include
         ${catkin_INCLUDE_DIRS}
         ${OpenCV_INCLUDE_DIRS}
         ${Eigen_INCLUDE_DIRS}
+        ${dynamic_reconfigure_PACKAGE_PATH}/cmake/cfgbuild.cmake
         )
 
 add_library(${FILESNAME} src/${FILESNAME}.cpp)
 
-add_dependencies(${FILESNAME} ${${FILESNAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(${FILESNAME}
+        ${${FILESNAME}_EXPORTED_TARGETS}
+        ${catkin_EXPORTED_TARGETS}
+        ${PROJECT_NAME}_gencfg)
 
 target_link_libraries(${FILESNAME} ${catkin_LIBRARIES})
 target_link_libraries(${FILESNAME} ${OpenCV_LIBRARIES})

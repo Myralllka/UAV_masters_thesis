@@ -11,6 +11,10 @@
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/Image.h>
+#include <nav_msgs/Odometry.h>
+#include <dynamic_reconfigure/server.h>
+#include <masters/DynrecConfig.h>
+
 
 /* some STL includes */
 #include <cstdlib>
@@ -64,7 +68,8 @@ namespace masters {
         std::string m_name_front_camera_tf;
         std::string m_name_target;
         std::string m_name_world_origin;
-        std::string m_nodename = "Masters";
+        std::string m_name_eagle_odom_msg;
+        const std::string m_nodename = "Masters";
 
         /* other parameters */
         image_geometry::PinholeCameraModel m_camera_front;
@@ -75,9 +80,15 @@ namespace masters {
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
         Eigen::Matrix<double, 6, 1> m_x_k;
         Eigen::Matrix<double, 6, 6> m_P_k;
+        Eigen::Matrix3d m_Q, m_R;
         std::mutex m_detection_mut;
         ros::Time m_detecton_time, m_last_kalman_time;
         Eigen::Vector3d m_detection_vec;
+
+        // Dynamic reconfigure
+        dynamic_reconfigure::Server<masters::DynrecConfig> server;
+
+        void m_cbk_dynrec(masters::DynrecConfig &config, uint32_t level);
 
         // | --------------------- MRS transformer -------------------- |
 
@@ -98,15 +109,17 @@ namespace masters {
         ros::Publisher m_pub_history2;
         ros::Publisher m_pub_viz;
         ros::Publisher m_pub_detection;
+        ros::Publisher m_pub_target_odom;
 
         // | ----------------------- subscribers ---------------------- |
+        mrs_lib::SubscribeHandler<nav_msgs::Odometry> m_subh_eagle_odom;
+
         ros::Subscriber m_sub_detection;
         ros::Subscriber m_sub_front_camera;
 
         ros::Timer m_tim_kalman;
 
         // | --------------------- other functions -------------------- |
-//        [[maybe_unused]] std::pair<vec3, vec3> m_find_intersection_svd_static_velocity_obj(const t_hist_vvt &data);
 
         std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
 

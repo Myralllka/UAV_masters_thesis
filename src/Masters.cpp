@@ -35,6 +35,7 @@ namespace masters {
         pl.loadParam("front_camera", m_name_front_camera);
         pl.loadParam("mean", m_mean);
         pl.loadParam("deviation", m_stddev);
+        pl.loadParam("eagle_odometry", m_name_eagle_odom_msg);
 
         if (!pl.loadedSuccessfully()) {
             ROS_ERROR("[%s]: failed to load non-optional parameters!", m_nodename.c_str());
@@ -42,6 +43,9 @@ namespace masters {
         } else {
             ROS_INFO_ONCE("[%s]: loaded parameters", m_nodename.c_str());
         }
+        // Dynamic reconfigure
+        server.setCallback(boost::bind(&Masters::m_cbk_dynrec, this, _1, _2));
+
         // | ---------------- some data post-processing --------------- |
         m_history_velocity = t_hist_vvt(m_history_bufsize);
 
@@ -51,6 +55,7 @@ namespace masters {
         m_pub_history1 = nh.advertise<geometry_msgs::PoseArray>(m_name_eagle + "/history_1", 1);
         m_pub_history2 = nh.advertise<geometry_msgs::PoseArray>(m_name_eagle + "/history_2", 1);
         m_pub_viz = nh.advertise<visualization_msgs::Marker>(m_name_eagle + "/detection", 1);
+        m_pub_target_odom = nh.advertise<nav_msgs::Odometry>(m_nodename + "/detected_target", 1);
 
         // | ---------------- subscribers initialize ------------------ |
         mrs_lib::SubscribeHandlerOptions shopt{nh};
@@ -62,33 +67,46 @@ namespace masters {
         mrs_lib::construct_object(handler_camfrontinfo,
                                   shopt,
                                   m_name_front_camera + "/camera_info");
+        mrs_lib::construct_object(m_subh_eagle_odom,
+                                  shopt,
+                                  m_name_eagle_odom_msg);
         while (ros::ok()) {
             if (handler_camfrontinfo.hasMsg()) {
                 camfront_info = *handler_camfrontinfo.getMsg().get();
                 break;
             }
         }
+        handler_camfrontinfo.stop();
+
+
         m_t0 = ros::Time::now();
-
         m_camera_front.fromCameraInfo(camfront_info);
-
         m_sub_detection = nh.subscribe("detection", 1,
                                        &Masters::m_cbk_detection, this);
         m_sub_front_camera = nh.subscribe(m_name_front_camera + "/image_raw", 1,
                                           &Masters::m_cbk_front_camera, this);
         // | --------------------- tf transformer --------------------- |
-        m_transformer = mrs_lib::Transformer(nh, m_nodename);
+        m_transformer = mrs_lib::Transformer(nh, m_nodename, ros::Duration(1));
 
         // | -------------------- initialize timers ------------------- |
         m_tim_kalman = nh.createTimer(ros::Duration(m_dt),
                                       &Masters::m_tim_cbk_kalman,
                                       this);
+        // Some additional inits
+
+        m_Q = Eigen::Matrix3d::Identity() * 0.1;
+        m_R = Eigen::Matrix3d::Identity() * 10;
 
         ROS_INFO_ONCE("[%s]: initialized", m_nodename.c_str());
         m_is_initialized = true;
     }
 //}
 
+// | ----------------- dynamic reconf callback ---------------- |
+    void Masters::m_cbk_dynrec(masters::DynrecConfig &config, [[maybe_unused]] uint32_t level) {
+        m_Q = Eigen::Matrix3d::Identity() * config.s_Q;
+        m_R = Eigen::Matrix3d::Identity() * config.s_R;
+    }
 
 // | ---------------------- msg callbacks --------------------- |
 
@@ -148,7 +166,6 @@ namespace masters {
         ROS_INFO("[%s]: A mat", m_nodename.c_str());
 
         // Find the drone's position in worlds coordinate frame
-        // TODO: give timeout for transformer
         auto T_eagle2world_opt = m_transformer.getTransform(m_name_front_camera_tf,
                                                             m_name_world_origin,
                                                             ros::Time(0)); // TODO: use real time
@@ -171,10 +188,18 @@ namespace masters {
             ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
             // New position and new velocity
 
-            //TODO: odometry UAV state
-            state_interceptor_new.segment<3>(0) = p1;
-            state_interceptor_new.segment<3>(3) = (p1 - m_state_interceptor.segment<3>(0)) / m_dt;
+            if (m_subh_eagle_odom.hasMsg()) {
+                const auto msg_ = m_subh_eagle_odom.getMsg().get();
+                const auto position = msg_->pose.pose.position;
+                const auto velocity = msg_->twist.twist.linear;
+                state_interceptor_new.segment<3>(0) = Eigen::Vector3d{position.x, position.y, position.z};
+                state_interceptor_new.segment<3>(3) = Eigen::Vector3d{velocity.x, velocity.y, velocity.z};
+            } else {
+                ROS_ERROR("[%s]: No odometry msg from %s", m_nodename.c_str(), m_name_eagle_odom_msg.c_str());
+                state_interceptor_new.segment<3>(0) = p1;
+                state_interceptor_new.segment<3>(3) = (p1 - m_state_interceptor.segment<3>(0)) / m_dt;
 
+            }
             // Predict always
             ROS_INFO("[%s]: kalman predict", m_nodename.c_str());
             std::tie(m_x_k, m_P_k) = plkf_predict(m_x_k,
@@ -199,14 +224,29 @@ namespace masters {
             state_interceptor_new.segment<3>(3) = Eigen::Vector3d::Ones();
             //TODO: initialize only when detection exists
             m_x_k = state_interceptor_new;
-            m_P_k = Eigen::Matrix<double, 6, 6>::Identity() * 10; // TODO: parametrize
+            m_P_k = Eigen::Matrix<double, 6, 6>::Identity() * 100; // TODO: parametrize
 
             ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
             m_is_kalman_initialized = true;
         }
 
-//        TODO: visualize the target with covariance and velocity, use Odometry msg
-        visualization_msgs::Marker marker_predict, marker_detect;
+        nav_msgs::Odometry msg;
+        msg.header.stamp = ev.current_expected;
+        msg.header.frame_id = m_name_world_origin;
+        msg.pose.pose.position.x = m_state_interceptor.x() + m_x_k.x();
+        msg.pose.pose.position.y = m_state_interceptor.y() + m_x_k.y();
+        msg.pose.pose.position.z = m_state_interceptor.z() + m_x_k.z();
+        msg.twist.twist.linear.x = m_x_k(3);
+        msg.twist.twist.linear.x = m_x_k(4);
+        msg.twist.twist.linear.x = m_x_k(5);
+        // Set the covariance matrix
+        for (int i = 0; i < 9; ++i) {
+            msg.pose.covariance[i] = m_P_k(i / 3, i % 3);
+            msg.twist.covariance[i] = m_P_k((i / 3) + 3, (i % 3) + 3);
+        }
+        m_pub_target_odom.publish(msg);
+
+        visualization_msgs::Marker marker_predict;
         marker_predict.header.frame_id = m_name_world_origin;
         marker_predict.header.stamp = ev.current_expected;
         marker_predict.ns = "my_namespace";
@@ -216,15 +256,16 @@ namespace masters {
         marker_predict.pose.position.x = m_state_interceptor.x() + m_x_k.x();
         marker_predict.pose.position.y = m_state_interceptor.y() + m_x_k.y();
         marker_predict.pose.position.z = m_state_interceptor.z() + m_x_k.z();
-        marker_predict.scale.x = 1;
-        marker_predict.scale.y = 1;
-        marker_predict.scale.z = 1;
+        marker_predict.scale.x = 0.2;
+        marker_predict.scale.y = 0.2;
+        marker_predict.scale.z = 0.2;
         marker_predict.color.a = 1.0; // Don't forget to set the alpha!
         marker_predict.color.r = 0.0;
         marker_predict.color.g = 1.0;
         marker_predict.color.b = 0.0;
         m_pub_viz.publish(marker_predict);
 
+        visualization_msgs::Marker marker_detect;
         marker_detect.header.frame_id = m_name_world_origin;
         marker_detect.header.stamp = ev.current_expected;
         marker_detect.ns = "my_namespace_detect";
@@ -266,8 +307,6 @@ namespace masters {
                           const Eigen::Matrix<double, 6, 1> &x_i,
                           const Eigen::Matrix<double, 6, 1> &x_i_,
                           const double &dt) {
-        double sigma_squared = 0.1; // TODO: parametrise
-        Eigen::Matrix3d Q = Eigen::Matrix3d::Identity() * sigma_squared;
         Eigen::Matrix<double, 6, 6> A;
         Eigen::Matrix<double, 6, 3> B;
 
@@ -287,7 +326,7 @@ namespace masters {
                 0, 0, dt;
 
         Eigen::Matrix<double, 6, 1> xk_ = A * (xk_1 + x_i_) - x_i;
-        Eigen::Matrix<double, 6, 6> Pk_ = A * Pk_1 * A.transpose() + B * Q * B.transpose();
+        Eigen::Matrix<double, 6, 6> Pk_ = A * Pk_1 * A.transpose() + B * m_Q * B.transpose();
         return {xk_, Pk_};
     }
 
@@ -295,7 +334,6 @@ namespace masters {
     Masters::plkf_correct(const Eigen::Matrix<double, 6, 1> &xk_,
                           const Eigen::Matrix<double, 6, 6> &Pk_,
                           const Eigen::Vector3d &lmb) {
-        double sigma_squared = 10; // TODO: parametrise
         const Eigen::Matrix3d Plk = Eigen::Matrix3d::Identity() - lmb * lmb.transpose() / (lmb.norm() * lmb.norm());
         Eigen::Matrix<double, 3, 6> Hk;
 
@@ -304,8 +342,7 @@ namespace masters {
         Hk.setZero();
         Hk.block<3, 3>(0, 0) = Plk;
 
-        Eigen::Matrix3d S = Eigen::Matrix3d::Identity() * sigma_squared;
-        Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * S * Vk.transpose();
+        Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * m_R * Vk.transpose();
         Eigen::Matrix3d pinv = Masters::pseudoinverse(ps);
 
         Eigen::Matrix<double, 6, 3> K = Pk_ * Hk.transpose() * pinv;

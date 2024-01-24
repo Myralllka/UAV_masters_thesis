@@ -39,6 +39,8 @@
       <param name="history_buffer_size" type="int" value="8"/>
 
       <param name="front_camera" type="string" value="/uav91/bluefox_front"/>
+      <param name="eagle_odometry" type="string" value="/uav91/estimation_manager/ground_truth/odom"/>
+
 <!--        remap image_int  to /uav91/bluefox_front-->
       <param name="mean" type="double" value="0.0"/>
       <param name="deviation" type="double" value="0"/>
