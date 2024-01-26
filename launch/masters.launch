@@ -43,7 +43,7 @@
 
 <!--        remap image_int  to /uav91/bluefox_front-->
       <param name="mean" type="double" value="0.0"/>
-      <param name="deviation" type="double" value="0"/>
+      <param name="deviation" type="double" value="5"/>
       <param name="triang_update_th" type="double" value="4"/>
 
       <!-- ROS parameters config file -->
