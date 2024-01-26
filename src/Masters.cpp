@@ -168,7 +168,7 @@ namespace masters {
         // Find the drone's position in worlds coordinate frame
         auto T_eagle2world_opt = m_transformer.getTransform(m_name_front_camera_tf,
                                                             m_name_world_origin,
-                                                            ros::Time(0)); // TODO: use real time
+                                                            ev.current_real);
 //        std::cout << "header stamp: " << T_eagle2world_opt->header.stamp << "; " << ev.current_real << "; "
 //                  << T_eagle2world_opt->header.stamp - ev.current_real;
         Eigen::Vector3d p1;
@@ -185,7 +185,7 @@ namespace masters {
         Eigen::Matrix<double, 6, 1> state_interceptor_new;
 
         if (m_is_kalman_initialized) {
-            ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
+            ROS_INFO_THROTTLE(5.0, "[%s]: kalman is initialised", m_nodename.c_str());
             // New position and new velocity
 
             if (m_subh_eagle_odom.hasMsg()) {
@@ -201,7 +201,7 @@ namespace masters {
 
             }
             // Predict always
-            ROS_INFO("[%s]: kalman predict", m_nodename.c_str());
+            ROS_INFO_THROTTLE(5.0, "[%s]: kalman predict", m_nodename.c_str());
             std::tie(m_x_k, m_P_k) = plkf_predict(m_x_k,
                                                   m_P_k,
                                                   m_state_interceptor,
@@ -210,7 +210,7 @@ namespace masters {
 
             // Correct if possible
             if (m_last_kalman_time < m_detecton_time) {
-                ROS_INFO("[%s]: kalman correct", m_nodename.c_str());
+                ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
                 std::lock_guard<std::mutex> lt(m_detection_mut);
                 std::tie(m_x_k, m_P_k) = plkf_correct(m_x_k, m_P_k, m_detection_vec);
                 m_last_kalman_time = ev.current_real;
@@ -224,21 +224,21 @@ namespace masters {
             state_interceptor_new.segment<3>(3) = Eigen::Vector3d::Ones();
             //TODO: initialize only when detection exists
             m_x_k = state_interceptor_new;
-            m_P_k = Eigen::Matrix<double, 6, 6>::Identity() * 100; // TODO: parametrize
+            m_P_k = Eigen::Matrix<double, 6, 6>::Identity() * 1; // TODO: parametrize
 
             ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
             m_is_kalman_initialized = true;
         }
 
         nav_msgs::Odometry msg;
-        msg.header.stamp = ev.current_expected;
+        msg.header.stamp = ev.current_real;
         msg.header.frame_id = m_name_world_origin;
         msg.pose.pose.position.x = m_state_interceptor.x() + m_x_k.x();
         msg.pose.pose.position.y = m_state_interceptor.y() + m_x_k.y();
         msg.pose.pose.position.z = m_state_interceptor.z() + m_x_k.z();
         msg.twist.twist.linear.x = m_x_k(3);
-        msg.twist.twist.linear.x = m_x_k(4);
-        msg.twist.twist.linear.x = m_x_k(5);
+        msg.twist.twist.linear.y = m_x_k(4);
+        msg.twist.twist.linear.z = m_x_k(5);
         // Set the covariance matrix
         for (int i = 0; i < 9; ++i) {
             msg.pose.covariance[i] = m_P_k(i / 3, i % 3);
@@ -248,7 +248,7 @@ namespace masters {
 
         visualization_msgs::Marker marker_predict;
         marker_predict.header.frame_id = m_name_world_origin;
-        marker_predict.header.stamp = ev.current_expected;
+        marker_predict.header.stamp = ev.current_real;
         marker_predict.ns = "my_namespace";
         marker_predict.id = 0;
         marker_predict.type = visualization_msgs::Marker::SPHERE;
@@ -267,7 +267,7 @@ namespace masters {
 
         visualization_msgs::Marker marker_detect;
         marker_detect.header.frame_id = m_name_world_origin;
-        marker_detect.header.stamp = ev.current_expected;
+        marker_detect.header.stamp = ev.current_real;
         marker_detect.ns = "my_namespace_detect";
         marker_detect.id = 1;
         marker_detect.type = visualization_msgs::Marker::ARROW;
