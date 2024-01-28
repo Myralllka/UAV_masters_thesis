@@ -57,7 +57,7 @@ namespace masters {
         double m_mean;
         double m_stddev;
         double m_upd_th;
-        double m_dt = 0.1;
+        double m_dt;
         ros::Time m_t0;
         int m_history_bufsize;
 
@@ -80,12 +80,16 @@ namespace masters {
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
         Eigen::Matrix<double, 6, 1> m_x_k;
         Eigen::Matrix<double, 6, 6> m_P_k;
-        Eigen::Matrix3d m_Q, m_R;
+        Eigen::Matrix<double, 6, 6> m_Q;
+        Eigen::Matrix3d m_R;
         std::mutex m_detection_mut;
-        ros::Time m_detecton_time, m_last_kalman_time;
+        ros::Time m_detecton_time;
+        ros::Time m_last_kalman_time;
+        ros::Time m_time_prev_real;
         Eigen::Vector3d m_detection_vec;
 
         // Dynamic reconfigure
+        masters::DynrecConfig m_dynrecconf;
         dynamic_reconfigure::Server<masters::DynrecConfig> server;
 
         void m_cbk_dynrec(masters::DynrecConfig &config, uint32_t level);
