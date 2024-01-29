@@ -44,6 +44,10 @@ namespace masters {
         } else {
             ROS_INFO_ONCE("[%s]: loaded parameters", m_nodename.c_str());
         }
+
+        m_Q = Eigen::Matrix3d::Identity() * 0.1;
+        m_R = Eigen::Matrix3d::Identity() * 1;
+
         // Dynamic reconfigure
         server.setCallback(boost::bind(&Masters::m_cbk_dynrec, this, _1, _2));
 
@@ -96,24 +100,10 @@ namespace masters {
                                       this);
         // Some additional inits
 
-        m_Q = Eigen::Matrix<double, 6, 6>::Identity();
+        m_Q = Eigen::Matrix<double, 3, 3>::Identity();
         m_R = Eigen::Matrix3d::Identity();
         Eigen::Matrix<double, 6, 6> G;
 //        https://www.mdpi.com/2072-4292/13/15/2915
-        const double dts = m_dt * m_dt / 2;
-        const double dtt = std::pow(m_dt, 3) / 3;
-        G << dtt, 0, 0, dts, 0, 0,
-                0, dtt, 0, 0, dts, 0,
-                0, 0, dtt, 0, 0, dts,
-                dts, 0, 0, m_dt, 0, 0,
-                0, dts, 0, 0, m_dt, 0,
-                0, 0, dts, 0, 0, m_dt;
-        m_Q.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * 1;
-        m_Q.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * 10;
-        m_Q.block<3, 3>(0, 3) = Eigen::Matrix3d::Identity();
-        m_Q.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity();
-        m_Q = m_Q.cwiseProduct(G);
-        m_R = Eigen::Matrix3d::Identity() * 1;
 
         ROS_INFO_ONCE("[%s]: initialized", m_nodename.c_str());
         m_is_initialized = true;
@@ -124,19 +114,9 @@ namespace masters {
     void Masters::m_cbk_dynrec(masters::DynrecConfig &config, [[maybe_unused]] uint32_t level) {
         Eigen::Matrix<double, 6, 6> G;
 //        https://www.mdpi.com/2072-4292/13/15/2915
-        const double dts = m_dt * m_dt / 2;
-        const double dtt = std::pow(m_dt, 3) / 3;
-        G << dtt, 0, 0, dts, 0, 0,
-                0, dtt, 0, 0, dts, 0,
-                0, 0, dtt, 0, 0, dts,
-                dts, 0, 0, m_dt, 0, 0,
-                0, dts, 0, 0, m_dt, 0,
-                0, 0, dts, 0, 0, m_dt;
-        m_Q.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_Q_position;
-        m_Q.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * config.s_Q_velocity;
-        m_Q.block<3, 3>(0, 3) = Eigen::Matrix3d::Identity();
-        m_Q.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity();
-        m_Q = m_Q.cwiseProduct(G);
+
+        ROS_INFO("New dynamic reconfigure values received.");
+        m_Q = Eigen::Matrix3d::Identity() * config.s_Q;
         m_R = Eigen::Matrix3d::Identity() * config.s_R;
     }
 
@@ -188,7 +168,6 @@ namespace masters {
         if (not m_is_initialized) return;
         ROS_INFO_THROTTLE(5.0, "[%s]: tim kalman start", m_nodename.c_str());
         double dt = (ev.current_real - m_time_prev_real).toSec();
-        std::cout << dt << std::endl;
         Eigen::Matrix<double, 6, 6> A;
         A << 1, 0, 0, dt, 0, 0,
                 0, 1, 0, 0, dt, 0,
@@ -265,7 +244,7 @@ namespace masters {
             ROS_INFO("[%s]: kalman initialise", m_nodename.c_str());
             auto opt_est_init = m_transformer.transformAsPoint(m_name_world_origin,
                                                                Eigen::Vector3d{10, 0, 0},
-                                                               m_name_front_camera_tf + "_optical",
+                                                               m_name_front_camera_tf,
                                                                ev.current_real);
             if (opt_est_init.has_value()) {
                 //TODO: initialize only when detection exists
@@ -387,7 +366,7 @@ namespace masters {
 
 
         Eigen::Matrix<double, 6, 1> xk_ = A * (xk_1 + x_i_) - x_i;
-        Eigen::Matrix<double, 6, 6> Pk_ = A * Pk_1 * A.transpose() + m_Q;
+        Eigen::Matrix<double, 6, 6> Pk_ = A * Pk_1 * A.transpose() + B * m_Q * B.transpose();
         return {xk_, Pk_};
     }
 
@@ -404,7 +383,9 @@ namespace masters {
         Hk.block<3, 3>(0, 0) = Plk;
 
         Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * m_R * Vk.transpose() * m_dt;
-        Eigen::Matrix3d pinv = Masters::pseudoinverse(ps);
+//        Eigen::Matrix3d pinv = Masters::pseudoinverse(ps);
+        Eigen::CompleteOrthogonalDecomposition<Eigen::Matrix3d> cod(ps);
+        Eigen::Matrix3d pinv = cod.pseudoInverse();
 
         Eigen::Matrix<double, 6, 3> K = Pk_ * Hk.transpose() * pinv;
 

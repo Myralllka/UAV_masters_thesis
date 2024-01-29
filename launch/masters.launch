@@ -42,7 +42,7 @@
       <param name="eagle_odometry" type="string" value="/uav91/estimation_manager/ground_truth/odom"/>
 
 <!--        remap image_int  to /uav91/bluefox_front-->
-      <param name="dt_kalman" type="double" value="0.012"/>
+      <param name="dt_kalman" type="double" value="0.5"/>
       <param name="mean" type="double" value="0.0"/>
       <param name="deviation" type="double" value="0"/>
       <param name="triang_update_th" type="double" value="4"/>

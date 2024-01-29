@@ -80,7 +80,7 @@ namespace masters {
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
         Eigen::Matrix<double, 6, 1> m_x_k;
         Eigen::Matrix<double, 6, 6> m_P_k;
-        Eigen::Matrix<double, 6, 6> m_Q;
+        Eigen::Matrix<double, 3, 3> m_Q;
         Eigen::Matrix3d m_R;
         std::mutex m_detection_mut;
         ros::Time m_detecton_time;
