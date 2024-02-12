@@ -316,7 +316,7 @@ Visualization Manager:
       Marker Topic: /uav91/control_manager/mpc_tracker/trajectory_processed/markers
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -398,7 +398,7 @@ Visualization Manager:
         Opacity: 255
         Shaft length: 1
         Shaft radius: 0.10000000149011612
-        Value: false
+        Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -427,7 +427,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 39.57661056518555
+      Distance: 64.77142333984375
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -443,9 +443,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.31479573249816895
+      Pitch: 0.3647955060005188
       Target Frame: <Fixed Frame>
-      Yaw: 5.633097171783447
+      Yaw: 2.263091564178467
     Saved: ~
 Window Geometry:
   Camera:

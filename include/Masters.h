@@ -80,13 +80,11 @@ namespace masters {
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
         Eigen::Matrix<double, 6, 1> m_x_k;
         Eigen::Matrix<double, 6, 6> m_P_k;
+        Eigen::Matrix<double, 6, 6> m_P0;
         Eigen::Matrix<double, 3, 3> m_Q;
         Eigen::Matrix3d m_R;
-        std::mutex m_detection_mut;
-        ros::Time m_detecton_time;
         ros::Time m_last_kalman_time;
         ros::Time m_time_prev_real;
-        Eigen::Vector3d m_detection_vec;
 
         // Dynamic reconfigure
         masters::DynrecConfig m_dynrecconf;
@@ -104,7 +102,9 @@ namespace masters {
         [[maybe_unused]] void m_cbk_front_camera(const sensor_msgs::ImageConstPtr &msg);
 
         // | --------------------- timer callbacks -------------------- |
-        void m_tim_cbk_kalman(const ros::TimerEvent &ev);
+        void update_kalman(            Eigen::Vector3d m_detection_vec,
+                                       ros::Time m_detection_time);
+        // void m_tim_cbk_kalman(const ros::TimerEvent &ev);
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
