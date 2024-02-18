@@ -84,7 +84,7 @@ namespace masters {
             /* const mat3_t rotT = rot.transpose(); */
 
             H_t H = Eigen::Matrix<double, 2, n>::Zero();
-            H.block(2, 2, 0, 0) = rot.block<2, 2>(0, 0);
+            H.block(2, 2, 0, 0) = rot.block(2, 2, 0, 0);
 
             const pt3_t oprime = rot * line_origin;
             const pt2_t z = oprime.head<2>();
