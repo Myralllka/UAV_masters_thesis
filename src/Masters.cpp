@@ -43,7 +43,8 @@ namespace masters {
             ROS_INFO_ONCE("[%s]: loaded parameters", m_nodename.c_str());
         }
 
-        m_Q = Eigen::Matrix3d::Identity() * 0.1;
+//        m_Q = Eigen::Matrix3d::Identity() * 0.1;
+        m_Q = Eigen::Matrix<double, 6, 6>::Identity() * 0.1;
         m_R = Eigen::Matrix3d::Identity() * 1;
 
         // Dynamic reconfigure
@@ -94,11 +95,12 @@ namespace masters {
 
         // | -------------------- initialize timers ------------------- |
         //m_tim_kalman = nh.createTimer(ros::Duration(m_dt),
-         //                             &Masters::m_tim_cbk_kalman,
-          //                            this);
+        //                             &Masters::m_tim_cbk_kalman,
+        //                            this);
         // Some additional inits
 
-        m_Q = Eigen::Matrix<double, 3, 3>::Identity();
+//        m_Q = Eigen::Matrix<double, 3, 3>::Identity();
+        m_Q = Eigen::Matrix<double, 6, 6>::Identity();
         m_R = Eigen::Matrix3d::Identity();
         Eigen::Matrix<double, 6, 6> G;
 //        https://www.mdpi.com/2072-4292/13/15/2915
@@ -114,7 +116,8 @@ namespace masters {
 //        https://www.mdpi.com/2072-4292/13/15/2915
 
         ROS_INFO("New dynamic reconfigure values received.");
-        m_Q = Eigen::Matrix3d::Identity() * config.s_Q;
+//        m_Q = Eigen::Matrix3d::Identity() * config.s_Q;
+        m_Q = Eigen::Matrix<double, 6, 6>::Identity() * config.s_Q;
         m_R = Eigen::Matrix3d::Identity() * config.s_R;
         m_P0 = Eigen::Matrix<double, 6, 6>::Zero();
         m_P0.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_P0_position;
@@ -136,8 +139,8 @@ namespace masters {
 
             if (msg.header.stamp - m_last_kalman_time > ros::Duration(m_dt)) {
                 const Eigen::Vector3d detection_vec = Eigen::Vector3d{T_msg_frame2world_opt->x(),
-                                                  T_msg_frame2world_opt->y(),
-                                                  T_msg_frame2world_opt->z()}.normalized();
+                                                                      T_msg_frame2world_opt->y(),
+                                                                      T_msg_frame2world_opt->z()}.normalized();
                 update_kalman(detection_vec, msg.header.stamp);
             }
         } else {
@@ -173,6 +176,7 @@ namespace masters {
         if (not m_is_initialized) return;
         ROS_INFO_THROTTLE(5.0, "[%s]: tim kalman start", m_nodename.c_str());
         const double dt = (detection_time - m_last_kalman_time).toSec();
+
         Eigen::Matrix<double, 6, 6> A;
         A << 1, 0, 0, dt, 0, 0,
              0, 1, 0, 0, dt, 0,
@@ -180,22 +184,30 @@ namespace masters {
              0, 0, 0, 1, 0, 0,
              0, 0, 0, 0, 1, 0,
              0, 0, 0, 0, 0, 1;
+        const auto dts = dt * dt / 2;
+        Eigen::Matrix<double, 6, 3> B;
+        B << dts, 0, 0,
+             0, dts, 0,
+             0, 0, dts,
+             dt, 0, 0,
+             0, dt, 0,
+             0, 0, dt;
 
         Eigen::Matrix<double, 6, 1> state_interceptor_new;
         if (m_subh_eagle_odom.hasMsg()) {
             const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
             const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_eagle_odom->header.frame_id,
-                                                                  {msg_eagle_odom->pose.pose.position.x,
-                                                                   msg_eagle_odom->pose.pose.position.y,
-                                                                   msg_eagle_odom->pose.pose.position.z},
-                                                                  m_name_world_origin,
-                                                                  msg_eagle_odom->header.stamp);
+                                                                        {msg_eagle_odom->pose.pose.position.x,
+                                                                         msg_eagle_odom->pose.pose.position.y,
+                                                                         msg_eagle_odom->pose.pose.position.z},
+                                                                        m_name_world_origin,
+                                                                        msg_eagle_odom->header.stamp);
             const auto new_twist_st_opt = m_transformer.transformAsVector(msg_eagle_odom->child_frame_id,
-                                                                   {msg_eagle_odom->twist.twist.linear.x,
-                                                                    msg_eagle_odom->twist.twist.linear.y,
-                                                                    msg_eagle_odom->twist.twist.linear.z},
-                                                                   m_name_world_origin,
-                                                                   msg_eagle_odom->header.stamp);
+                                                                          {msg_eagle_odom->twist.twist.linear.x,
+                                                                           msg_eagle_odom->twist.twist.linear.y,
+                                                                           msg_eagle_odom->twist.twist.linear.z},
+                                                                          m_name_world_origin,
+                                                                          msg_eagle_odom->header.stamp);
             if (new_pose_st_opt.has_value() and new_twist_st_opt.has_value()) {
                 state_interceptor_new.segment<3>(0) = new_pose_st_opt.value();
                 state_interceptor_new.segment<3>(3) = new_twist_st_opt.value();
@@ -212,34 +224,61 @@ namespace masters {
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman is initialised", m_nodename.c_str());
 
             // Predict always
-            ROS_INFO_THROTTLE(5.0, "[%s]: kalman predict", m_nodename.c_str());
-            std::tie(m_x_k, m_P_k) = plkf_predict(m_x_k,
-                                                  m_P_k,
-                                                  m_state_interceptor,
-                                                  state_interceptor_new,
-                                                  dt);
+            ROS_INFO("[%s]: kalman predict", m_nodename.c_str());
+//            std::tie(m_x_k, m_P_k) = plkf_predict(m_x_k,
+//                                                  m_P_k,
+//                                                  m_state_interceptor,
+//                                                  state_interceptor_new,
+//                                                  dt);
+            DKF<6, 0>::u_t u;
+            u.setZero();
+            try {
+
+                m_state_vec = m_dkf.predict(m_state_vec, u, m_Q, dt);
+            }
+            catch (const std::exception &e) {
+                ROS_ERROR("DKF predict failed: %s", e.what());
+            }
 
             // Correct always
-            ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
-            std::tie(m_x_k, m_P_k) = plkf_correct(m_x_k, m_P_k, detection_vec);
+            ROS_INFO( "[%s]: kalman correct", m_nodename.c_str());
+//            std::tie(m_x_k, m_P_k) = plkf_correct(m_x_k, m_P_k, detection_vec);
+            try {
+                m_state_vec = m_dkf.correctLine(m_state_vec,
+                                                m_state_interceptor.segment<3>(0),
+                                                detection_vec,
+                                                m_stddev);
+            }
+            catch (const std::exception &e) {
+                ROS_ERROR("DKF correct failed: %s", e.what());
+            }
+
+
             m_last_kalman_time = detection_time;
 
         } else {
             // initialise
             ROS_INFO("[%s]: kalman initialise", m_nodename.c_str());
             const auto opt_est_init = m_transformer.transformAsPoint(m_name_front_camera_tf,
-                                                               Eigen::Vector3d{0, 0, 10},
-                                                               m_name_world_origin,
-                                                               detection_time);
+                                                                     Eigen::Vector3d{0, 0, 10},
+                                                                     m_name_world_origin,
+                                                                     detection_time);
             if (opt_est_init.has_value()) {
                 //TODO: initialize only when detection exists
-                m_x_k.setZero();
-                m_x_k.x() = opt_est_init->x() - state_interceptor_new.x();
-                m_x_k.y() = opt_est_init->y() - state_interceptor_new.y();
-                m_x_k.z() = opt_est_init->z() - state_interceptor_new.z();
-                m_P_k = m_P0;
+                m_dkf = DKF<6, 0>(A, DKF<6, 0>::B_t::Zero());
+
+                Eigen::Matrix<double, 6, 1> x_k;
+                x_k.setZero();
+                x_k.x() = opt_est_init->x() - state_interceptor_new.x();
+                x_k.y() = opt_est_init->y() - state_interceptor_new.y();
+                x_k.z() = opt_est_init->z() - state_interceptor_new.z();
+                m_state_vec.x = x_k;
+                m_state_vec.P = m_P0;
+
             } else {
-                ROS_ERROR("[%s]: No transformation from %s to %s ", m_nodename.c_str(), m_name_world_origin.c_str(),
+                ROS_ERROR("[%s]: No transformation from %s to %s ",
+                          m_nodename.c_str(),
+                          m_name_world_origin.c_str(),
                           (m_name_front_camera_tf).c_str());
                 return;
             }
@@ -247,6 +286,8 @@ namespace masters {
             m_is_kalman_initialized = true;
         }
 
+        const Eigen::Matrix<double, 6, 1> m_x_k = m_state_vec.x;
+        const Eigen::Matrix<double, 6, 6> m_P_k = m_state_vec.P;
         nav_msgs::Odometry msg;
         msg.header.stamp = detection_time;
         msg.child_frame_id = m_name_world_origin;
@@ -264,7 +305,7 @@ namespace masters {
                 msg.pose.covariance.at(n * i + j) = m_P_k(i, j);
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
-                msg.twist.covariance.at(n * i + j) = m_P_k(i+3, j+3);
+                msg.twist.covariance.at(n * i + j) = m_P_k(i + 3, j + 3);
 
         m_pub_target_odom.publish(msg);
 
@@ -323,64 +364,64 @@ namespace masters {
     }
 
 // | -------------------- other functions ------------------- |
-    std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
-    Masters::plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,
-                          const Eigen::Matrix<double, 6, 6> &Pk_1,
-                          const Eigen::Matrix<double, 6, 1> &x_i,
-                          const Eigen::Matrix<double, 6, 1> &x_i_,
-                          const double &dt) {
-        Eigen::Matrix<double, 6, 6> A;
-        Eigen::Matrix<double, 6, 3> B;
-
-        A << 1, 0, 0, dt, 0, 0,
-                0, 1, 0, 0, dt, 0,
-                0, 0, 1, 0, 0, dt,
-                0, 0, 0, 1, 0, 0,
-                0, 0, 0, 0, 1, 0,
-                0, 0, 0, 0, 0, 1;
-
-        const auto dts = dt * dt / 2;
-        B << dts, 0, 0,
-                0, dts, 0,
-                0, 0, dts,
-                dt, 0, 0,
-                0, dt, 0,
-                0, 0, dt;
-
-
-        Eigen::Matrix<double, 6, 1> xk_ = A * (xk_1 + x_i_) - x_i;
-        Eigen::Matrix<double, 6, 6> Pk_ = A * Pk_1 * A.transpose() + B * m_Q * B.transpose();
-        return {xk_, Pk_};
-    }
-
-    std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
-    Masters::plkf_correct(const Eigen::Matrix<double, 6, 1> &xk_,
-                          const Eigen::Matrix<double, 6, 6> &Pk_,
-                          const Eigen::Vector3d &lmb) {
-        const Eigen::Matrix3d Plk = Eigen::Matrix3d::Identity() - lmb * lmb.transpose() / lmb.squaredNorm();
-        Eigen::Matrix<double, 3, 6> Hk;
-
-        double r_ = xk_.segment<0>(3).norm();
-        const Eigen::Matrix3d Vk = r_ * Plk;
-        Hk.setZero();
-        Hk.block<3, 3>(0, 0) = Plk;
-
-        Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * m_R * Vk.transpose() * m_dt;
-//        Eigen::Matrix3d pinv = Masters::pseudoinverse(ps);
-        Eigen::CompleteOrthogonalDecomposition<Eigen::Matrix3d> cod(ps);
-        Eigen::Matrix3d pinv = cod.pseudoInverse();
-
-        Eigen::Matrix<double, 6, 3> K = Pk_ * Hk.transpose() * pinv;
-
-        Eigen::Matrix<double, 6, 1> xk1 = xk_ - K * Hk * xk_;
-        Eigen::Matrix<double, 6, 6> Pk1 = (Eigen::Matrix<double, 6, 6>::Identity() - K * Hk) * Pk_;
-//        std::cout << "===========================" << std::endl;
-//        std::cout << Pk_ << std::endl;
-//        std::cout << "---------------------------" << std::endl;
-//        std::cout << Pk1 << std::endl;
-        return {xk1, Pk1};
-    }
-
+//    std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
+//    Masters::plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,
+//                          const Eigen::Matrix<double, 6, 6> &Pk_1,
+//                          const Eigen::Matrix<double, 6, 1> &x_i,
+//                          const Eigen::Matrix<double, 6, 1> &x_i_,
+//                          const double &dt) {
+//        Eigen::Matrix<double, 6, 6> A;
+//        Eigen::Matrix<double, 6, 3> B;
+//
+//        A << 1, 0, 0, dt, 0, 0,
+//                0, 1, 0, 0, dt, 0,
+//                0, 0, 1, 0, 0, dt,
+//                0, 0, 0, 1, 0, 0,
+//                0, 0, 0, 0, 1, 0,
+//                0, 0, 0, 0, 0, 1;
+//
+//        const auto dts = dt * dt / 2;
+//        B << dts, 0, 0,
+//                0, dts, 0,
+//                0, 0, dts,
+//                dt, 0, 0,
+//                0, dt, 0,
+//                0, 0, dt;
+//
+//
+//        Eigen::Matrix<double, 6, 1> xk_ = A * (xk_1 + x_i_) - x_i;
+//        Eigen::Matrix<double, 6, 6> Pk_ = A * Pk_1 * A.transpose() + B * m_Q * B.transpose();
+//        return {xk_, Pk_};
+//    }
+//
+//    std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
+//    Masters::plkf_correct(const Eigen::Matrix<double, 6, 1> &xk_,
+//                          const Eigen::Matrix<double, 6, 6> &Pk_,
+//                          const Eigen::Vector3d &lmb) {
+//        const Eigen::Matrix3d Plk = Eigen::Matrix3d::Identity() - lmb * lmb.transpose() / lmb.squaredNorm();
+//        Eigen::Matrix<double, 3, 6> Hk;
+//
+//        double r_ = xk_.segment<0>(3).norm();
+//        const Eigen::Matrix3d Vk = r_ * Plk;
+//        Hk.setZero();
+//        Hk.block<3, 3>(0, 0) = Plk;
+//
+//        Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * m_R * Vk.transpose() * m_dt;
+////        Eigen::Matrix3d pinv = Masters::pseudoinverse(ps);
+//        Eigen::CompleteOrthogonalDecomposition<Eigen::Matrix3d> cod(ps);
+//        Eigen::Matrix3d pinv = cod.pseudoInverse();
+//
+//        Eigen::Matrix<double, 6, 3> K = Pk_ * Hk.transpose() * pinv;
+//
+//        Eigen::Matrix<double, 6, 1> xk1 = xk_ - K * Hk * xk_;
+//        Eigen::Matrix<double, 6, 6> Pk1 = (Eigen::Matrix<double, 6, 6>::Identity() - K * Hk) * Pk_;
+////        std::cout << "===========================" << std::endl;
+////        std::cout << Pk_ << std::endl;
+////        std::cout << "---------------------------" << std::endl;
+////        std::cout << Pk1 << std::endl;
+//        return {xk1, Pk1};
+//    }
+//
 
     std::optional<cv::Point2d> Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
         auto T_eagle2drone_opt = m_transformer.getTransform("uav2/fcu",

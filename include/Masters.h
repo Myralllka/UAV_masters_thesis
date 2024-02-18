@@ -25,6 +25,9 @@
 #include <mrs_lib/param_loader.h>
 #include <mrs_lib/transformer.h>
 #include <mrs_lib/subscribe_handler.h>
+#include <mrs_lib/lkf.h>
+#include <mrs_lib/geometry/misc.h>
+
 
 /* other important includes */
 #include <opencv2/core/eigen.hpp>
@@ -38,6 +41,61 @@
 //}
 
 namespace masters {
+    /* class DKF //{ */
+    template<int n_states, int n_inputs>
+    class DKF : public mrs_lib::LKF<n_states, n_inputs, -1> {
+    public:
+        /* DKF definitions (typedefs, constants etc) //{ */
+        using Base_class = mrs_lib::LKF<n_states, n_inputs, -1>;
+        static constexpr int n = Base_class::n;
+        static constexpr int m = Base_class::m;
+        static constexpr int p = Base_class::p;
+        using x_t = typename Base_class::x_t;
+        using u_t = typename Base_class::u_t;
+        using z_t = typename Base_class::z_t;
+        using P_t = typename Base_class::P_t;
+        using R_t = typename Base_class::R_t;
+        using Q_t = typename Base_class::Q_t;
+        using statecov_t = typename Base_class::statecov_t;
+        typedef Eigen::Matrix<double, n, n> A_t;
+        typedef Eigen::Matrix<double, n, m> B_t;
+        typedef Eigen::Matrix<double, p, n> H_t;
+        typedef Eigen::Matrix<double, n, p> K_t;
+        using mat2_t = Eigen::Matrix<double, 2, 2>;
+        using mat3_t = Eigen::Matrix<double, 3, 3>;
+        using pt3_t = mrs_lib::geometry::vec3_t;
+        using pt2_t = mrs_lib::geometry::vec2_t;
+        using vec3_t = mrs_lib::geometry::vec3_t;
+        //}
+
+    public:
+        DKF() {};
+
+        DKF(const A_t &A, const B_t &B) : Base_class(A, B, {}) {};
+
+        /* correctLine() method //{ */
+        virtual std::enable_if_t<(n > 3), statecov_t>
+        correctLine(const statecov_t &sc, const pt3_t &line_origin, const vec3_t &line_direction,
+                    const double line_variance) const {
+            assert(line_direction.norm() > 0.0);
+            const vec3_t zunit{0.0, 0.0, 1.0};
+            // rot is a rotation matrix, transforming from F to F'
+            const mat3_t rot = mrs_lib::geometry::rotationBetween(line_direction, zunit);
+            /* const mat3_t rotT = rot.transpose(); */
+
+            H_t H = Eigen::Matrix<double, 2, n>::Zero();
+            H.block(2, 2, 0, 0) = rot.block<2, 2>(0, 0);
+
+            const pt3_t oprime = rot * line_origin;
+            const pt2_t z = oprime.head<2>();
+
+            const mat2_t R = line_variance * mat2_t::Identity();
+            return this->correction_impl(sc, z, R, H);
+        };
+        //}
+    };
+    //}
+
     using vec3 = Eigen::Vector3d;
 
     using t_hist_vv = boost::circular_buffer<std::pair<vec3, vec3>>;
@@ -78,10 +136,11 @@ namespace masters {
 
         /* Kalman filter */
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
-        Eigen::Matrix<double, 6, 1> m_x_k;
-        Eigen::Matrix<double, 6, 6> m_P_k;
+//        Eigen::Matrix<double, 6, 1> m_x_k;
+//        Eigen::Matrix<double, 6, 6> m_P_k;
         Eigen::Matrix<double, 6, 6> m_P0;
-        Eigen::Matrix<double, 3, 3> m_Q;
+//        Eigen::Matrix<double, 3, 3> m_Q;
+        Eigen::Matrix<double, 6, 6> m_Q;
         Eigen::Matrix3d m_R;
         ros::Time m_last_kalman_time;
         ros::Time m_time_prev_real;
@@ -102,8 +161,7 @@ namespace masters {
         [[maybe_unused]] void m_cbk_front_camera(const sensor_msgs::ImageConstPtr &msg);
 
         // | --------------------- timer callbacks -------------------- |
-        void update_kalman(            Eigen::Vector3d m_detection_vec,
-                                       ros::Time m_detection_time);
+        void update_kalman(Eigen::Vector3d m_detection_vec, ros::Time m_detection_time);
         // void m_tim_cbk_kalman(const ros::TimerEvent &ev);
 
         // | ----------------------- publishers ----------------------- |
@@ -127,6 +185,8 @@ namespace masters {
 
         std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
 
+        DKF<6, 0> m_dkf = DKF<6, 0>();
+        DKF<6, 0>::statecov_t m_state_vec;
 
         std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
         plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,
