@@ -178,6 +178,7 @@ namespace masters {
 
         ros::Subscriber m_sub_detection;
         ros::Subscriber m_sub_front_camera;
+        double m_line_variance = 0.0;
 
         ros::Timer m_tim_kalman;
 

@@ -61,7 +61,6 @@ windows:
       layout: tiled
       panes:
         - export UAV_NAME=uav91; export RUN_TYPE=simulation; waitForControl; roslaunch masters masters.launch
-
   - trajectory:
       layout: tiled
       panes:
