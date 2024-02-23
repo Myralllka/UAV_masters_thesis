@@ -123,9 +123,12 @@ namespace masters {
         m_Q.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_Q_pos;
         m_Q.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * config.s_Q_vel;
         m_R = Eigen::Matrix3d::Identity() * config.s_R;
-        m_state_vec.P = Eigen::Matrix<double, 6, 6>::Ones();
+        m_state_vec.P = Eigen::Matrix<double, 6, 6>::Zero();
         m_state_vec.P.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_P0_position;
         m_state_vec.P.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * config.s_P0_velocity;
+        m_P0 = Eigen::Matrix<double, 6, 6>::Zero();
+        m_P0.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_P0_position;
+        m_P0.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * config.s_P0_velocity;
         m_line_variance = config.dkf_var;
     }
 
@@ -136,15 +139,15 @@ namespace masters {
         // find the eagle pose
         auto pt_rect = m_camera_front.rectifyPoint({msg.point.x, msg.point.y});
         cv::Point3d td_ray = m_camera_front.projectPixelTo3dRay(pt_rect);
-        auto T_msg_frame2world_opt = m_transformer.transformAsPoint(msg.header.frame_id,
-                                                                    Eigen::Vector3d{td_ray.x, td_ray.y, td_ray.z},
-                                                                    m_name_world_origin,
-                                                                    msg.header.stamp);
+        auto T_msg_frame2world_opt = m_transformer.transformAsVector(msg.header.frame_id,
+                                                                     Eigen::Vector3d{td_ray.x, td_ray.y, td_ray.z},
+                                                                     m_name_world_origin,
+                                                                     msg.header.stamp);
         if (T_msg_frame2world_opt.has_value()) {
             if (msg.header.stamp - m_last_kalman_time > ros::Duration(m_dt)) {
                 const Eigen::Vector3d detection_vec = Eigen::Vector3d{T_msg_frame2world_opt->x(),
                                                                       T_msg_frame2world_opt->y(),
-                                                                      T_msg_frame2world_opt->z()};
+                                                                      T_msg_frame2world_opt->z()}.normalized();
                 update_kalman(detection_vec, msg.header.stamp);
             }
         } else {
@@ -178,23 +181,19 @@ namespace masters {
         if (not m_is_initialized) return;
         ROS_INFO_THROTTLE(5.0, "[%s]: tim kalman start", m_nodename.c_str());
         const double dt = (detection_time - m_last_kalman_time).toSec();
+        m_last_kalman_time = detection_time;
 
-        Eigen::Matrix<double, 6, 6> A;
-        A << 1, 0, 0, dt, 0, 0,
-                0, 1, 0, 0, dt, 0,
-                0, 0, 1, 0, 0, dt,
-                0, 0, 0, 1, 0, 0,
-                0, 0, 0, 0, 1, 0,
-                0, 0, 0, 0, 0, 1;
-        const auto dts = dt * dt / 2;
-        Eigen::Matrix<double, 6, 3> B;
-        B << dts, 0, 0,
-                0, dts, 0,
-                0, 0, dts,
-                dt, 0, 0,
-                0, dt, 0,
-                0, 0, dt;
-
+        Eigen::Matrix<double, 6, 6> A = dkf_t::A_t::Zero();
+        A.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
+        A.block<3, 3>(3, 0) = dt * Eigen::Matrix3d::Identity();
+        A.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity();
+//        A << 1, 0, 0, dt, 0, 0,
+//                0, 1, 0, 0, dt, 0,
+//                0, 0, 1, 0, 0, dt,
+//                0, 0, 0, 1, 0, 0,
+//                0, 0, 0, 0, 1, 0,
+//                0, 0, 0, 0, 0, 1;
+        m_dkf.A = A;
         Eigen::Matrix<double, 6, 1> state_interceptor_new;
         if (m_subh_eagle_odom.hasMsg()) {
             const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
@@ -227,10 +226,14 @@ namespace masters {
 
             // Predict always
             ROS_INFO("[%s]: kalman predict", m_nodename.c_str());
-            DKF<6, 0>::u_t u;
+            dkf_t::u_t u;
             u.setZero();
+            dkf_t::Q_t Q = dkf_t::Q_t::Zero();
+            Q.block<3, 3>(0, 0) = m_Q.block<3, 3>(0, 0);
+            Q.block<3, 3>(3, 3) = dt * m_Q.block<3, 3>(3, 3);
+
             try {
-                m_state_vec = m_dkf.predict(m_state_vec, u, m_Q, dt);
+                m_state_vec = m_dkf.predict(m_state_vec, u, Q, dt);
             }
             catch (const std::exception &e) {
                 ROS_ERROR("DKF predict failed: %s", e.what());
@@ -240,7 +243,7 @@ namespace masters {
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
             try {
                 m_state_vec = m_dkf.correctLine(m_state_vec,
-                                                m_state_interceptor.segment<3>(0),
+                                                state_interceptor_new.segment<3>(0),
                                                 detection_vec,
                                                 m_line_variance);
             }
@@ -248,8 +251,6 @@ namespace masters {
                 ROS_ERROR("DKF correct failed: %s", e.what());
             }
 
-
-            m_last_kalman_time = detection_time;
 
         } else {
             // initialise
@@ -259,8 +260,7 @@ namespace masters {
                                                                      m_name_world_origin,
                                                                      detection_time);
             if (opt_est_init.has_value()) {
-                //TODO: initialize only when detection exists
-                m_dkf = DKF<6, 0>(A, DKF<6, 0>::B_t::Zero());
+                m_dkf = dkf_t(A, dkf_t::B_t::Zero());
 
                 Eigen::Matrix<double, 6, 1> x_k;
                 x_k.setZero();
@@ -329,7 +329,7 @@ namespace masters {
         m_pub_viz.publish(marker_predict);
 
         visualization_msgs::Marker marker_detect;
-        marker_detect.header.frame_id = m_name_world_origin;
+        marker_detect.header.frame_id = m_name_front_camera_tf;
         marker_detect.header.stamp = detection_time;
         marker_detect.ns = "my_namespace_detect";
         marker_detect.id = 1;
@@ -340,9 +340,9 @@ namespace masters {
         marker_detect.pose.position.z = 0;
         std::vector<geometry_msgs::Point> points;
         geometry_msgs::Point gpt1, gpt2;
-        gpt1.x = state_interceptor_new.x();
-        gpt1.y = state_interceptor_new.y();
-        gpt1.z = state_interceptor_new.z();
+        gpt1.x = 0;
+        gpt1.y = 0;
+        gpt1.z = 0;
         gpt2.x = detection_vec.x();
         gpt2.y = detection_vec.y();
         gpt2.z = detection_vec.z();

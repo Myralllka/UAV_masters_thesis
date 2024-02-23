@@ -84,7 +84,7 @@ namespace masters {
             /* const mat3_t rotT = rot.transpose(); */
 
             H_t H = Eigen::Matrix<double, 2, n>::Zero();
-            H.block(2, 2, 0, 0) = rot.block(2, 2, 0, 0);
+            H.template block<2, 2>(0, 0) = rot.block<2, 2>(0, 0);
 
             const pt3_t oprime = rot * line_origin;
             const pt2_t z = oprime.head<2>();
@@ -108,6 +108,7 @@ namespace masters {
         /* onInit() is called when nodelet is launched (similar to main() in regular node) */
         virtual void onInit();
 
+        using dkf_t = DKF<6, 0>;
     private:
         /* flags */
         bool m_is_initialized = false;
@@ -186,8 +187,8 @@ namespace masters {
 
         std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
 
-        DKF<6, 0> m_dkf = DKF<6, 0>();
-        DKF<6, 0>::statecov_t m_state_vec;
+        dkf_t m_dkf = dkf_t();
+        dkf_t::statecov_t m_state_vec;
 
         std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
         plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,
