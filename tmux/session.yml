@@ -28,8 +28,8 @@ windows:
   - spawn:
       layout: tiled
       panes:
-        - waitForGazebo; rosservice call /mrs_drone_spawner/spawn "91 --eaglemk2 --model_package eagle_gazebo_resources --enable-rangefinder --pos_file $EAGLE_GR_DIR/tmux/two_drones_rtk_1.5/uav_spawn_positions.csv --enable-ground-truth --enable-bluefox-camera"
-        - waitForGazebo; rosservice call /mrs_drone_spawner/spawn "2  --f550 --enable-rangefinder --pos_file $EAGLE_GR_DIR/tmux/two_drones_rtk_1.5/uav_spawn_positions.csv --enable-ground-truth"
+        - waitForGazebo; rosservice call /mrs_drone_spawner/spawn "91 --eaglemk2 --model_package eagle_gazebo_resources --enable-rangefinder --pos_file `rospack find masters`/tmux/uav_spawn_positions.csv --enable-ground-truth --enable-bluefox-camera"
+        - waitForGazebo; rosservice call /mrs_drone_spawner/spawn "2  --f550 --enable-rangefinder --pos_file `rospack find masters`/tmux/uav_spawn_positions.csv --enable-ground-truth"
   - hw_api:
       layout: tiled
       panes:

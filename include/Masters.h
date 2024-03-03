@@ -73,6 +73,18 @@ namespace masters {
 
         DKF(const A_t &A, const B_t &B) : Base_class(A, B, {}) {};
 
+        static R_t invert_W(R_t W) {
+            Eigen::ColPivHouseholderQR<R_t> qr(W);
+            if (!qr.isInvertible()) {
+                // add some stuff to the tmp matrix diagonal to make it invertible
+                R_t ident = R_t::Identity(W.rows(), W.cols());
+                W += 1e-9 * ident;
+                qr.compute(W);
+            }
+            const R_t W_inv = qr.inverse();
+            return W_inv;
+        }
+
         /* correctLine() method //{ */
         virtual std::enable_if_t<(n > 3), statecov_t>
         correctLine(const statecov_t &sc, const pt3_t &line_origin, const vec3_t &line_direction,
@@ -81,7 +93,7 @@ namespace masters {
             const vec3_t zunit{0.0, 0.0, 1.0};
             // rot is a rotation matrix, transforming from F to F'
             const mat3_t rot = mrs_lib::geometry::rotationBetween(line_direction, zunit);
-            /* const mat3_t rotT = rot.transpose(); */
+//            const mat3_t rotT = rot.transpose();
 
             H_t H = Eigen::Matrix<double, 2, n>::Zero();
             H.template block<2, 2>(0, 0) = rot.block<2, 2>(0, 0);
@@ -90,11 +102,28 @@ namespace masters {
             const pt2_t z = oprime.head<2>();
 
             const mat2_t R = line_variance * mat2_t::Identity();
-            return this->correction_impl(sc, z, R, H);
+
+            statecov_t ret;
+            const R_t W = H * sc.P * H.transpose() + R;
+            const R_t W_inv = invert_W(W);
+            const K_t K = sc.P * H.transpose() * W_inv;
+//            const auto innovation = z - (H * sc.x);
+//            const auto Kinn = K * innovation;
+
+            ret.x = sc.x + K * (z - (H * sc.x));
+            ret.P = (P_t::Identity() - (K * H)) * sc.P;
+
+            return ret;
         };
         //}
     };
     //}
+
+//            std::cout << "K:  " << K << std::endl;
+//            std::cout << "H:  " << H << std::endl;
+//            std::cout << "z:  " << z << std::endl;
+//            std::cout << "inn" << innovation << std::endl;
+//            std::cout << "Knn" << Kinn << std::endl;
 
     using vec3 = Eigen::Vector3d;
 
@@ -143,7 +172,7 @@ namespace masters {
 //        Eigen::Matrix<double, 3, 3> m_Q;
         Eigen::Matrix<double, 6, 6> m_Q;
         Eigen::Matrix3d m_R;
-        ros::Time m_last_kalman_time;
+        ros::Time m_last_kalman_time{0};
         ros::Time m_time_prev_real;
 
         // Dynamic reconfigure
