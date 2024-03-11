@@ -85,45 +85,31 @@ namespace masters {
             return W_inv;
         }
 
-        /* correctLine() method //{ */
         virtual std::enable_if_t<(n > 3), statecov_t>
         correctLine(const statecov_t &sc, const pt3_t &line_origin, const vec3_t &line_direction,
                     const double line_variance) const {
             assert(line_direction.norm() > 0.0);
-            const vec3_t zunit{0.0, 0.0, 1.0};
-            // rot is a rotation matrix, transforming from F to F'
-            const mat3_t rot = mrs_lib::geometry::rotationBetween(line_direction, zunit);
-//            const mat3_t rotT = rot.transpose();
 
-            H_t H = Eigen::Matrix<double, 2, n>::Zero();
-            H.template block<2, 2>(0, 0) = rot.block<2, 2>(0, 0);
+            using M_t = Eigen::Matrix<double, 3, n>;
+            using W_t = Eigen::Matrix<double, 3, 1>;
+            using N_t = Eigen::Matrix<double, 3, 2>;
+            using o_t = Eigen::Matrix<double, 3, 1>;
+            using R_t_l = Eigen::Matrix<double, 2, 2>;
 
-            const pt3_t oprime = rot * line_origin;
-            const pt2_t z = oprime.head<2>();
+            const M_t M = M_t::Identity();
+            const W_t W = line_direction;
+            const o_t o = line_origin;
 
-            const mat2_t R = line_variance * mat2_t::Identity();
+            const mat3_t rot = mrs_lib::geometry::rotationBetween(W_t::UnitX(), W);
+            const N_t N = rot.block<3, 2>(0, 1);
+            const z_t z = N.transpose() * o;
+            const H_t H = N.transpose() * M;
+            const R_t_l R = line_variance * N.transpose() * N;
 
-            statecov_t ret;
-            const R_t W = H * sc.P * H.transpose() + R;
-            const R_t W_inv = invert_W(W);
-            const K_t K = sc.P * H.transpose() * W_inv;
-//            const auto innovation = z - (H * sc.x);
-//            const auto Kinn = K * innovation;
-
-            ret.x = sc.x + K * (z - (H * sc.x));
-            ret.P = (P_t::Identity() - (K * H)) * sc.P;
-
-            return ret;
+            return this->correction_impl(sc, z, R, H);
         };
-        //}
-    };
-    //}
 
-//            std::cout << "K:  " << K << std::endl;
-//            std::cout << "H:  " << H << std::endl;
-//            std::cout << "z:  " << z << std::endl;
-//            std::cout << "inn" << innovation << std::endl;
-//            std::cout << "Knn" << Kinn << std::endl;
+    };
 
     using vec3 = Eigen::Vector3d;
 
@@ -165,6 +151,7 @@ namespace masters {
         t_hist_vvt m_history_velocity;
 
         /* Kalman filter */
+        int m_cnt_update = 0;
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
 //        Eigen::Matrix<double, 6, 1> m_x_k;
 //        Eigen::Matrix<double, 6, 6> m_P_k;

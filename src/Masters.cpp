@@ -228,29 +228,28 @@ namespace masters {
             Q.block<3, 3>(0, 0) = m_Q.block<3, 3>(0, 0);
             Q.block<3, 3>(3, 3) = dt * m_Q.block<3, 3>(3, 3);
 
-            std::cout << "Before predict: " << m_state_vec.x << std::endl;
             try {
                 m_state_vec = m_dkf.predict(m_state_vec, u, Q, dt);
             }
             catch (const std::exception &e) {
                 ROS_ERROR("DKF predict failed: %s", e.what());
             }
-            std::cout << "After predict: " << m_state_vec.x << std::endl;
 
-            // Correct always
-            ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
-            std::cout << "Before correct: " << m_state_vec.x << std::endl;
-            std::cout << "Detection vec: " << detection_vec << std::endl;
-            try {
-                m_state_vec = m_dkf.correctLine(m_state_vec,
-                                                state_interceptor_new.segment<3>(0),
-                                                detection_vec,
-                                                m_line_variance);
+            // Correct every nth tine
+            if (m_cnt_update++ >= 2) {
+                m_cnt_update = 0;
+                ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
+
+                try {
+                    m_state_vec = m_dkf.correctLine(m_state_vec,
+                                                    state_interceptor_new.segment<3>(0),
+                                                    detection_vec,
+                                                    m_line_variance);
+                }
+                catch (const std::exception &e) {
+                    ROS_ERROR("DKF correct failed: %s", e.what());
+                }
             }
-            catch (const std::exception &e) {
-                ROS_ERROR("DKF correct failed: %s", e.what());
-            }
-            std::cout << "After correct: " << m_state_vec.x << std::endl;
 
 
         } else {

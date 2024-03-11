@@ -5,12 +5,12 @@ world_point:
   y: 0.0
   z: 0.0
 
-s_Q_pos: 0.000001
-s_Q_vel: 0.00000001
+s_Q_pos: 0.0001
+s_Q_vel: 0.00001
 s_R: 0.01
 s_P0_position: 0.1
 s_P0_velocity: 0.0001
-dkf_var: 0.1
+dkf_var: 0.05
 
 rate:
   # how often to publish my topic?
