@@ -57,10 +57,10 @@ namespace masters {
         using R_t = typename Base_class::R_t;
         using Q_t = typename Base_class::Q_t;
         using statecov_t = typename Base_class::statecov_t;
-        typedef Eigen::Matrix<double, n, n> A_t;
-        typedef Eigen::Matrix<double, n, m> B_t;
-        typedef Eigen::Matrix<double, p, n> H_t;
-        typedef Eigen::Matrix<double, n, p> K_t;
+        using A_t = Eigen::Matrix<double, n, n>;
+        using B_t = Eigen::Matrix<double, n, m>;
+        using H_t = Eigen::Matrix<double, p, n>;
+        using K_t = Eigen::Matrix<double, n, p>;
         using mat2_t = Eigen::Matrix<double, 2, 2>;
         using mat3_t = Eigen::Matrix<double, 3, 3>;
         using pt3_t = mrs_lib::geometry::vec3_t;
@@ -85,7 +85,21 @@ namespace masters {
             return W_inv;
         }
 
-        virtual std::enable_if_t<(n > 3), statecov_t>
+        statecov_t predict(const statecov_t &sc,
+                           const u_t &u,
+                           const Q_t &Q,
+                           [[maybe_unused]] double dt) const override {
+            statecov_t ret;
+            ret.x = this->state_predict(this->A, sc.x, this->B, u);
+            ret.P = covariance_predict(this->A, sc.P, Q);
+            return ret;
+        }
+
+        static P_t covariance_predict(const A_t &A, const P_t &P, const Q_t &Q) {
+            return A * P * A.transpose() + Q;
+        }
+
+        [[nodiscard]] virtual std::enable_if_t<(n > 3), statecov_t>
         correctLine(const statecov_t &sc, const pt3_t &line_origin, const vec3_t &line_direction,
                     const double line_variance) const {
             assert(line_direction.norm() > 0.0);
@@ -153,11 +167,8 @@ namespace masters {
         /* Kalman filter */
         int m_cnt_update = 0;
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
-//        Eigen::Matrix<double, 6, 1> m_x_k;
-//        Eigen::Matrix<double, 6, 6> m_P_k;
         Eigen::Matrix<double, 6, 6> m_P0;
-//        Eigen::Matrix<double, 3, 3> m_Q;
-        Eigen::Matrix<double, 6, 6> m_Q;
+        Eigen::Matrix<double, 3, 3> m_Q;
         Eigen::Matrix3d m_R;
         ros::Time m_last_kalman_time{0};
         ros::Time m_time_prev_real;

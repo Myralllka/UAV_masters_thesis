@@ -43,10 +43,6 @@ namespace masters {
             ROS_INFO_ONCE("[%s]: loaded parameters", m_nodename.c_str());
         }
 
-//        m_Q = Eigen::Matrix3d::Identity() * 0.1;
-        m_Q = Eigen::Matrix<double, 6, 6>::Identity() * 0.0001;
-        m_R = Eigen::Matrix3d::Identity() * 0.00001;
-
         // Dynamic reconfigure
         server.setCallback(boost::bind(&Masters::m_cbk_dynrec, this, _1, _2));
 
@@ -94,17 +90,7 @@ namespace masters {
         m_transformer.setLookupTimeout(ros::Duration(0.1));
 
         // | -------------------- initialize timers ------------------- |
-        //m_tim_kalman = nh.createTimer(ros::Duration(m_dt),
-        //                             &Masters::m_tim_cbk_kalman,
-        //                            this);
         // Some additional inits
-
-//        m_Q = Eigen::Matrix<double, 3, 3>::Identity();
-
-//      change then in default.yaml
-        m_Q = Eigen::Matrix<double, 6, 6>::Identity();
-        m_R = Eigen::Matrix3d::Identity();
-        Eigen::Matrix<double, 6, 6> G;
 //        https://www.mdpi.com/2072-4292/13/15/2915
 
         ROS_INFO_ONCE("[%s]: initialized", m_nodename.c_str());
@@ -118,10 +104,7 @@ namespace masters {
 //        https://www.mdpi.com/2072-4292/13/15/2915
 
         ROS_INFO("New dynamic reconfigure values received.");
-//        m_Q = Eigen::Matrix3d::Identity() * config.s_Q;
-        m_Q = Eigen::Matrix<double, 6, 6>::Identity();
-        m_Q.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_Q_pos;
-        m_Q.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * config.s_Q_vel;
+        m_Q = Eigen::Matrix<double, 3, 3>::Identity() * config.s_Q_acc;
         m_R = Eigen::Matrix3d::Identity() * config.s_R;
         m_state_vec.P = Eigen::Matrix<double, 6, 6>::Zero();
         m_state_vec.P.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_P0_position;
@@ -188,7 +171,10 @@ namespace masters {
         m_last_kalman_time = detection_time;
 
         dkf_t::A_t A = dkf_t::A_t::Identity();
+        Eigen::Matrix<double, 6, 3> B = Eigen::Matrix<double, 6, 3>::Identity();
         A.block<3, 3>(0, 3) = dt * Eigen::Matrix3d::Identity();
+        B.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * dt * dt / 2;
+        B.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * dt;
         m_dkf.A = A;
         Eigen::Matrix<double, 6, 1> state_interceptor_new;
         if (m_subh_eagle_odom.hasMsg()) {
@@ -224,9 +210,8 @@ namespace masters {
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman predict", m_nodename.c_str());
             dkf_t::u_t u;
             u.setZero();
-            dkf_t::Q_t Q = dkf_t::Q_t::Zero();
-            Q.block<3, 3>(0, 0) = m_Q.block<3, 3>(0, 0);
-            Q.block<3, 3>(3, 3) = dt * m_Q.block<3, 3>(3, 3);
+
+            Eigen::Matrix<double, 6, 6> Q = B * m_Q * B.transpose();
 
             try {
                 m_state_vec = m_dkf.predict(m_state_vec, u, Q, dt);
@@ -256,7 +241,7 @@ namespace masters {
             // initialise
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman initialise", m_nodename.c_str());
             const auto opt_est_init = m_transformer.transformAsPoint(m_name_front_camera_tf,
-                                                                     Eigen::Vector3d{-4, 0, 10},
+                                                                     Eigen::Vector3d{0, 0, 10},
                                                                      m_name_world_origin,
                                                                      detection_time);
             if (opt_est_init.has_value()) {
@@ -290,8 +275,6 @@ namespace masters {
         msg.header.stamp = detection_time;
         msg.child_frame_id = m_name_world_origin;
         msg.header.frame_id = m_name_world_origin;
-//        msg.child_frame_id = "uav91/bluefox_front";
-//        msg.header.frame_id = "uav91/bluefox_front";
         msg.pose.pose.position.x = m_x_k(0);
         msg.pose.pose.position.y = m_x_k(1);
         msg.pose.pose.position.z = m_x_k(2);
