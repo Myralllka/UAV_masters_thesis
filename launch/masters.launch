@@ -36,20 +36,15 @@
 
       <param name="eagle_name" type="string" value="$(arg UAV_NAME)"/>
       <param name="target_name" type="string" value="/uav2"/>
-      <param name="history_buffer_size" type="int" value="8"/>
 
       <param name="front_camera" type="string" value="/uav91/bluefox_front"/>
       <param name="eagle_odometry" type="string" value="/uav91/estimation_manager/ground_truth/odom"/>
 
 <!--        remap image_int  to /uav91/bluefox_front-->
-      <param name="dt_kalman" type="double" value="0.5"/>
-      <param name="mean" type="double" value="0.0"/>
-      <param name="deviation" type="double" value="1"/>
-      <param name="triang_update_th" type="double" value="4"/>
-
       <!-- ROS parameters config file -->
 <!--          TODO: rosparam file-->
       <rosparam file="$(find masters)/config/default.yaml" />
+      <rosparam file="$(find masters)/config/masters.yaml" />
 
       <!-- Subscribers (note that the topic names will also be remapped using the namespace as a prefix) -->
 

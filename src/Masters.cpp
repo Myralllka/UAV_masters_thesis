@@ -27,14 +27,13 @@ namespace masters {
         pl.loadParam("eagle_name", m_name_eagle);
         pl.loadParam("target_name", m_name_target);
         pl.loadParam("world_origin", m_name_world_origin);
-        pl.loadParam("triang_update_th", m_upd_th);
-        pl.loadParam("history_buffer_size", m_history_bufsize);
 
         pl.loadParam("front_camera", m_name_front_camera);
         pl.loadParam("mean", m_mean);
         pl.loadParam("dt_kalman", m_dt);
         pl.loadParam("deviation", m_stddev);
         pl.loadParam("eagle_odometry", m_name_eagle_odom_msg);
+        pl.loadParam("correction_th", m_correction_th);
 
         if (!pl.loadedSuccessfully()) {
             ROS_ERROR("[%s]: failed to load non-optional parameters!", m_nodename.c_str());
@@ -47,7 +46,6 @@ namespace masters {
         server.setCallback(boost::bind(&Masters::m_cbk_dynrec, this, _1, _2));
 
         // | ---------------- some data post-processing --------------- |
-        m_history_velocity = t_hist_vvt(m_history_bufsize);
 
         // | ----------------- publishers initialize ------------------ |
         m_pub_image_changed = nh.advertise<sensor_msgs::Image>("changed", 1);
@@ -221,7 +219,9 @@ namespace masters {
             }
 
             // Correct every nth tine
-            if (m_cnt_update++ >= 2) {
+            if ((state_interceptor_new.segment<3>(0) - m_position_last_correction).norm() >= m_correction_th) {
+//            if (m_cnt_update++ >= 2) {
+// TODO: do correct based on movement
                 m_cnt_update = 0;
                 ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
 
@@ -234,6 +234,7 @@ namespace masters {
                 catch (const std::exception &e) {
                     ROS_ERROR("DKF correct failed: %s", e.what());
                 }
+                m_position_last_correction = state_interceptor_new.segment<3>(0);
             }
 
 
@@ -257,6 +258,7 @@ namespace masters {
                 x_k[5] = 0;
                 m_state_vec.x = x_k;
                 m_state_vec.P = m_P0;
+                m_position_last_correction = x_k.segment<3>(0);
 
             } else {
                 ROS_ERROR("[%s]: No transformation from %s to %s ",

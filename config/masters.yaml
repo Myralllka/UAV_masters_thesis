@@ -1,2 +1,4 @@
-
-
+dt_kalman: 0.1
+mean: 0.0
+deviation: 1
+correction_th: 2

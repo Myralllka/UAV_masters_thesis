@@ -144,7 +144,7 @@ namespace masters {
         bool m_is_kalman_initialized = false;
         double m_mean;
         double m_stddev;
-        double m_upd_th;
+        double m_correction_th;
         double m_dt;
         ros::Time m_t0;
         int m_history_bufsize;
@@ -167,6 +167,7 @@ namespace masters {
         /* Kalman filter */
         int m_cnt_update = 0;
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
+        Eigen::Vector3d m_position_last_correction;
         Eigen::Matrix<double, 6, 6> m_P0;
         Eigen::Matrix<double, 3, 3> m_Q;
         Eigen::Matrix3d m_R;
@@ -190,7 +191,6 @@ namespace masters {
 
         // | --------------------- timer callbacks -------------------- |
         void update_kalman(Eigen::Vector3d m_detection_vec, ros::Time m_detection_time);
-        // void m_tim_cbk_kalman(const ros::TimerEvent &ev);
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
