@@ -157,10 +157,12 @@ namespace masters {
         std::string m_name_target;
         std::string m_name_world_origin;
         std::string m_name_eagle_odom_msg;
+        std::string m_approach;
         const std::string m_nodename = "Masters";
 
         /* other parameters */
         image_geometry::PinholeCameraModel m_camera_front;
+        //        For SVD part:
         t_hist_vv m_history_linear;
         t_hist_vvt m_history_velocity;
 
@@ -169,7 +171,7 @@ namespace masters {
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
         Eigen::Vector3d m_position_last_correction;
         Eigen::Matrix<double, 6, 6> m_P0;
-        Eigen::Matrix<double, 3, 3> m_Q;
+        Eigen::Matrix3d m_Q;
         Eigen::Matrix3d m_R;
         ros::Time m_last_kalman_time{0};
         ros::Time m_time_prev_real;
@@ -189,12 +191,17 @@ namespace masters {
 
         [[maybe_unused]] void m_cbk_front_camera(const sensor_msgs::ImageConstPtr &msg);
 
+        [[maybe_unused]] void m_cbk_camera_image_to_detection_svd(const sensor_msgs::ImageConstPtr &msg);
+
+        [[maybe_unused]] void m_cbk_posearray_svd_pos_vel(const geometry_msgs::PoseArray &msg);
+
+
         // | --------------------- timer callbacks -------------------- |
         void update_kalman(Eigen::Vector3d m_detection_vec, ros::Time m_detection_time);
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
-//        ros::Publisher m_pub_front_camera_detection;
+        ros::Publisher m_pub_front_camera_detection;
         ros::Publisher m_pub_history1;
         ros::Publisher m_pub_history2;
         ros::Publisher m_pub_viz;
@@ -205,6 +212,7 @@ namespace masters {
         mrs_lib::SubscribeHandler<nav_msgs::Odometry> m_subh_eagle_odom;
 
         ros::Subscriber m_sub_detection;
+        ros::Subscriber m_sub_front_camera_detection;
         ros::Subscriber m_sub_front_camera;
         double m_line_variance = 0.0;
 
@@ -216,6 +224,16 @@ namespace masters {
 
         dkf_t m_dkf = dkf_t();
         dkf_t::statecov_t m_state_vec;
+
+        void visualise_odometry(const Eigen::Matrix<double, 6, 1> state,
+                                const Eigen::Matrix<double, 6, 6> covariance,
+                                const ros::Time &t);
+
+        void visualise_arrow(const Eigen::Vector3d &start,
+                             const Eigen::Vector3d &end,
+                             const ros::Time &detection_time);
+
+        void visualise_sphere(const Eigen::Vector3d &pos, const ros::Time &t);
 
         std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
         plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,
@@ -250,6 +268,11 @@ namespace masters {
             }
             return svd.matrixV() * singularValuesInv * svd.matrixU().adjoint();
         }
+
+        [[maybe_unused]] static vec3 m_find_intersection_svd_static_obj(const t_hist_vv &data);
+
+        [[maybe_unused]] std::pair<vec3, vec3> m_find_intersection_svd_velocity_obj(const t_hist_vvt &data);
+
     };
 
 }  // namespace masters
