@@ -28,8 +28,9 @@ namespace masters {
         pl.loadParam("approach", m_approach);
         pl.loadParam("target_name", m_name_target);
         pl.loadParam("world_origin", m_name_world_origin);
+        pl.loadParam("history_size", m_history_buf_size);
 
-        pl.loadParam("front_camera", m_name_front_camera);
+        pl.loadParam("main_camera", m_name_main_camera);
         pl.loadParam("mean", m_mean);
         pl.loadParam("dt_kalman", m_dt);
         pl.loadParam("deviation", m_stddev);
@@ -47,10 +48,13 @@ namespace masters {
         server.setCallback(boost::bind(&Masters::m_cbk_dynrec, this, _1, _2));
 
         // | ---------------- some data post-processing --------------- |
+        m_history_linear = boost::circular_buffer<std::pair<vec3, vec3>>(m_history_buf_size);
+        m_history_velocity = boost::circular_buffer<std::tuple<vec3, vec3, ros::Time>>(m_history_buf_size);
 
         // | ----------------- publishers initialize ------------------ |
         m_pub_image_changed = nh.advertise<sensor_msgs::Image>("changed", 1);
         m_pub_detection = nh.advertise<geometry_msgs::PointStamped>("detection", 1);
+        m_pub_detection_svd = nh.advertise<geometry_msgs::PoseArray>("detection_svd", 1);
         m_pub_history1 = nh.advertise<geometry_msgs::PoseArray>(m_name_eagle + "/history_1", 1);
         m_pub_history2 = nh.advertise<geometry_msgs::PoseArray>(m_name_eagle + "/history_2", 1);
         m_pub_viz = nh.advertise<visualization_msgs::Marker>("detection_marker", 1);
@@ -61,21 +65,21 @@ namespace masters {
         shopt.node_name = m_nodename;
         shopt.threadsafe = true;
         shopt.no_message_timeout = ros::Duration(1.0);
-        sensor_msgs::CameraInfo camfront_info;
-        mrs_lib::SubscribeHandler<sensor_msgs::CameraInfo> handler_camfrontinfo;
-        mrs_lib::construct_object(handler_camfrontinfo,
+        sensor_msgs::CameraInfo cam_info;
+        mrs_lib::SubscribeHandler<sensor_msgs::CameraInfo> handler_caminfo;
+        mrs_lib::construct_object(handler_caminfo,
                                   shopt,
-                                  m_name_front_camera + "/camera_info");
+                                  m_name_main_camera + "/camera_info");
         mrs_lib::construct_object(m_subh_eagle_odom,
                                   shopt,
                                   m_name_eagle_odom_msg);
         while (ros::ok()) {
-            if (handler_camfrontinfo.hasMsg()) {
-                camfront_info = *handler_camfrontinfo.getMsg().get();
+            if (handler_caminfo.hasMsg()) {
+                cam_info = *handler_caminfo.getMsg().get();
                 break;
             }
         }
-        handler_camfrontinfo.stop();
+        handler_caminfo.stop();
 
         // | --------------------- tf transformer --------------------- |
         m_transformer = mrs_lib::Transformer(nh, m_nodename, ros::Duration(1));
@@ -83,26 +87,23 @@ namespace masters {
 
 
         m_t0 = ros::Time::now();
-        m_camera_front.fromCameraInfo(camfront_info);
+        m_camera_main.fromCameraInfo(cam_info);
         ROS_INFO("[%s]: approach used: %s", m_nodename.c_str(), m_approach.c_str());
         if (m_approach == "dkf") {
-            m_sub_detection = nh.subscribe("detection", 1,
-                                           &Masters::m_cbk_detection, this);
-            m_sub_front_camera = nh.subscribe(m_name_front_camera + "/image_raw", 1,
-                                              &Masters::m_cbk_front_camera, this);
+            m_sub_detection = nh.subscribe("detection", 1, &Masters::m_cbk_detection, this);
+            m_sub_main_camera = nh.subscribe(m_name_main_camera + "/image_raw", 1,
+                                             &Masters::m_cbk_main_camera, this);
         } else if (m_approach == "plkf") {
 
         } else if (m_approach == "svd_static") {
-            m_sub_front_camera_detection = nh.subscribe(m_name_front_camera + "/detection", 1,
-                                                        &Masters::m_cbk_posearray_svd_pos_vel, this);
-            m_sub_front_camera = nh.subscribe(m_name_front_camera + "/image_raw", 1,
-                                              &Masters::m_cbk_camera_image_to_detection_svd, this);
+            m_sub_main_camera_detection = nh.subscribe("detection_svd", 1, &Masters::m_cbk_posearray_svd_pos_vel, this);
+            m_sub_main_camera = nh.subscribe(m_name_main_camera + "/image_raw", 1,
+                                             &Masters::m_cbk_camera_image_to_detection_svd, this);
 
         } else if (m_approach == "svd_dynamic") {
-            m_sub_front_camera_detection = nh.subscribe(m_name_front_camera + "/detection", 1,
-                                                        &Masters::m_cbk_posearray_svd_pos_vel, this);
-            m_sub_front_camera = nh.subscribe(m_name_front_camera + "/image_raw", 1,
-                                              &Masters::m_cbk_camera_image_to_detection_svd, this);
+            m_sub_main_camera_detection = nh.subscribe("detection_svd", 1, &Masters::m_cbk_posearray_svd_pos_vel, this);
+            m_sub_main_camera = nh.subscribe(m_name_main_camera + "/image_raw", 1,
+                                             &Masters::m_cbk_camera_image_to_detection_svd, this);
 
         } else {
             ROS_ERROR("[%s]: unknown m_aproach", m_nodename.c_str());
@@ -139,8 +140,8 @@ namespace masters {
     [[maybe_unused]] void Masters::m_cbk_detection(const geometry_msgs::PointStamped &msg) {
 
         // find the eagle pose
-        auto pt_rect = m_camera_front.rectifyPoint({msg.point.x, msg.point.y});
-        cv::Point3d td_ray = m_camera_front.projectPixelTo3dRay(pt_rect);
+        auto pt_rect = m_camera_main.rectifyPoint({msg.point.x, msg.point.y});
+        cv::Point3d td_ray = m_camera_main.projectPixelTo3dRay(pt_rect);
         auto T_msg_frame2world_opt = m_transformer.transformAsVector(msg.header.frame_id,
                                                                      Eigen::Vector3d{td_ray.x, td_ray.y, td_ray.z},
                                                                      m_name_world_origin,
@@ -158,10 +159,10 @@ namespace masters {
         }
     }
 
-    [[maybe_unused]] void Masters::m_cbk_front_camera(const sensor_msgs::ImageConstPtr &msg) {
+    [[maybe_unused]] void Masters::m_cbk_main_camera(const sensor_msgs::ImageConstPtr &msg) {
         if (not m_is_initialized) return;
         const auto detection_opt = m_detect_uav(msg);
-        m_name_front_camera_tf = msg->header.frame_id;
+        m_name_main_camera_tf = msg->header.frame_id;
 
         if (detection_opt.has_value()) {
             cv::Point2d detection = detection_opt.value();
@@ -182,7 +183,7 @@ namespace masters {
 
         if (not m_is_initialized) return;
         ROS_INFO_THROTTLE(1.0, "[%s]: SVD detection start %s", m_nodename.c_str(), m_approach.c_str());
-//        TODO: rewrite to align it with  m_cbk_front_camera
+//        TODO: rewrite to align it with  m_cbk_main_camera
         const auto detection_opt = m_detect_uav(msg);
         cv::Point2d detection;
         if (detection_opt.has_value()) {
@@ -191,32 +192,8 @@ namespace masters {
             ROS_ERROR_THROTTLE(1.0, "[%s]: No detection present;", m_nodename.c_str());
             return;
         }
-        // in the Camera optical frame
-        cv::Point3d ray_to_detection_original = m_camera_front.projectPixelTo3dRay(detection);
-        // check for NaNs
-        if (ray_to_detection_original != ray_to_detection_original) {
-            return;
-        }
-        if (ray_to_detection_original.z < 0) {
-            ROS_WARN_THROTTLE(1.0, "[%s]: no target detected", m_nodename.c_str());
-            return;
-        }
-        ray_to_detection_original *= 2;
-        // transform to the static world frame
-        auto ray_opt = m_transformer.transformAsPoint("uav91/bluefox_front_optical",
-                                                      vec3{ray_to_detection_original.x,
-                                                           ray_to_detection_original.y,
-                                                           ray_to_detection_original.z},
-                                                      m_name_world_origin,
-                                                      msg->header.stamp);
         cv::Point3d ray_to_detection;
-        if (ray_opt.has_value()) {
-            ray_to_detection = {ray_opt.value().x(),
-                                ray_opt.value().y(),
-                                ray_opt.value().z()};
-        } else {
-            return;
-        }
+        ray_to_detection = {detection.x, detection.y, 1};
 
         cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
 
@@ -225,20 +202,47 @@ namespace masters {
         m_pub_image_changed.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg());
 
 
-        // find the eagle Pose and direction vector of detection, for the pose reconstruction
-        auto T_eagle2world_opt = m_transformer.getTransform("uav91/bluefox_front_optical",
-                                                            m_name_world_origin,
-                                                            msg->header.stamp);
-
         geometry_msgs::Pose p1, p2;
-        if (T_eagle2world_opt.has_value()) {
-            auto T_eagle2world = T_eagle2world_opt.value().transform.translation;
-            p1.position.x = T_eagle2world.x;
-            p1.position.y = T_eagle2world.y;
-            p1.position.z = T_eagle2world.z;
+//        p1 is the interceptor in the world coordinate frame
+        if (m_subh_eagle_odom.hasMsg()) {
+            const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
+            const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_eagle_odom->header.frame_id,
+                                                                        {msg_eagle_odom->pose.pose.position.x,
+                                                                         msg_eagle_odom->pose.pose.position.y,
+                                                                         msg_eagle_odom->pose.pose.position.z},
+                                                                        m_name_world_origin,
+                                                                        msg_eagle_odom->header.stamp);
+            if (new_pose_st_opt.has_value()) {
+                p1.position.x = new_pose_st_opt->x();
+                p1.position.y = new_pose_st_opt->y();
+                p1.position.z = new_pose_st_opt->z();
+            } else {
+                ROS_ERROR("[%s]: pose or twist transformation has no value", m_nodename.c_str());
+                return;
+            }
         } else {
-            ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR no transformation from eagle to world");
+            ROS_ERROR("[%s]: No odometry msg from %s", m_nodename.c_str(), m_name_eagle_odom_msg.c_str());
+            return;
         }
+        // transform to the static world frame
+        cv::Point3d ray_to_detection_original = m_camera_main.projectPixelTo3dRay({ray_to_detection.x,
+                                                                                   ray_to_detection.y});
+
+        auto ray_opt = m_transformer.transformAsPoint("uav91/bluefox_front_optical",
+                                                      vec3{ray_to_detection_original.x,
+                                                           ray_to_detection_original.y,
+                                                           ray_to_detection_original.z},
+                                                      m_name_world_origin,
+                                                      msg->header.stamp);
+        if (ray_opt.has_value()) {
+            ray_to_detection = {ray_opt.value().x(),
+                                ray_opt.value().y(),
+                                ray_opt.value().z()};
+        } else {
+            return;
+        }
+
+//        p2 is the 3d position of the end of a ray from the interceptor to the target
         p2.position.x = ray_to_detection.x;
         p2.position.y = ray_to_detection.y;
         p2.position.z = ray_to_detection.z;
@@ -248,7 +252,7 @@ namespace masters {
         res.header.frame_id = m_name_world_origin;
         res.poses.push_back(p1);
         res.poses.push_back(p2);
-        m_pub_front_camera_detection.publish(res);
+        m_pub_detection_svd.publish(res);
     }
 // | --------------------- timer callbacks -------------------- |
 
@@ -333,7 +337,8 @@ namespace masters {
         } else {
             // initialise
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman initialise", m_nodename.c_str());
-            const auto opt_est_init = m_transformer.transformAsPoint(m_name_front_camera_tf,
+//            initial estimation is a real position and velocity of a target
+            const auto opt_est_init = m_transformer.transformAsPoint(m_name_main_camera_tf,
                                                                      Eigen::Vector3d{0, 0, 10},
                                                                      m_name_world_origin,
                                                                      detection_time);
@@ -356,7 +361,7 @@ namespace masters {
                 ROS_ERROR("[%s]: No transformation from %s to %s ",
                           m_nodename.c_str(),
                           m_name_world_origin.c_str(),
-                          (m_name_front_camera_tf).c_str());
+                          m_name_main_camera_tf.c_str());
                 return;
             }
             ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
@@ -447,17 +452,23 @@ namespace masters {
         }
         m_pub_history1.publish(ps1);
         m_pub_history2.publish(ps2);
+        ROS_INFO_THROTTLE(1.0, "[%s]: history published", m_nodename.c_str());
 
         if (m_history_velocity.size() <= 1) {
+            ROS_INFO_THROTTLE(1.0, "[%s]: history size is smaller/equal 1", m_nodename.c_str());
             m_history_linear.push_back(std::pair{pos_origin, pos_s});
             m_history_velocity.push_back(std::tuple{pos_origin, pos_s, msg.header.stamp});
+            std::cout << m_history_linear.size() << std::endl;
+            std::cout << m_history_velocity.size() << std::endl;
             return;
         }
         if ((pos_origin - std::get<0>(m_history_velocity.back())).norm() > m_correction_th) {
+            ROS_INFO_THROTTLE(1.0, "[%s]:  the uav is quite far away, updating", m_nodename.c_str());
             m_history_linear.push_back(std::pair{pos_origin, pos_s});
             m_history_velocity.push_back(std::tuple{pos_origin, pos_s, msg.header.stamp});
         }
         if (m_history_velocity.size() >= 4) {
+            ROS_INFO_THROTTLE(1.0, "[%s]: history size is more than 4", m_nodename.c_str());
             vec3 position, velocity;
             if (m_approach == "svd_dynamic") {
                 std::tie(position, velocity) = m_find_intersection_svd_velocity_obj(m_history_velocity);
@@ -482,9 +493,11 @@ namespace masters {
             const double z = position.z() + velocity.z() * (time_now - m_t0).toSec();
             Eigen::Matrix<double, 6, 1> state;
             state << x, y, z, velocity.x(), velocity.y(), velocity.z();
+            ROS_INFO_THROTTLE(1.0, "[%s]: visualising odometry...", m_nodename.c_str());
             visualise_odometry(state,
                                Eigen::Matrix<double, 6, 6>::Identity(),
                                msg.header.stamp);
+            ROS_INFO_THROTTLE(1.0, "[%s]: visualising sphere...", m_nodename.c_str());
             visualise_sphere(state.head(3), msg.header.stamp);
 
 //            visualization_msgs::Marker marker;
@@ -600,15 +613,15 @@ namespace masters {
         if (dir_vec.z() < 0) {
             return std::nullopt;
         }
-        const auto pt_ideal = m_camera_front.project3dToPixel(cv::Point3d(dir_vec.x(), dir_vec.y(), dir_vec.z()));
+        const auto pt_ideal = m_camera_main.project3dToPixel(cv::Point3d(dir_vec.x(), dir_vec.y(), dir_vec.z()));
         std::random_device rseed;
         std::mt19937 rng(rseed());
         std::normal_distribution<double> dist(m_mean, m_stddev);
         double e_x = dist(rng), e_y = dist(rng);
 
         const cv::Point2d pt_noisy{pt_ideal.x + e_x, pt_ideal.y + e_y};
-        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_front.cameraInfo().width or
-            pt_noisy.y < 0 or pt_noisy.y > m_camera_front.cameraInfo().height) {
+        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_main.cameraInfo().width or
+            pt_noisy.y < 0 or pt_noisy.y > m_camera_main.cameraInfo().height) {
             return std::nullopt;
         }
         return pt_noisy;

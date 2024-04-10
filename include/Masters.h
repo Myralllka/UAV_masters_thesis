@@ -146,14 +146,14 @@ namespace masters {
         double m_stddev;
         double m_correction_th;
         double m_dt;
+        int m_history_buf_size;
         ros::Time m_t0;
-        int m_history_bufsize;
 
         /* ros parameters */
 //        std::string m_uav_name;
         std::string m_name_eagle;
-        std::string m_name_front_camera;
-        std::string m_name_front_camera_tf;
+        std::string m_name_main_camera;
+        std::string m_name_main_camera_tf;
         std::string m_name_target;
         std::string m_name_world_origin;
         std::string m_name_eagle_odom_msg;
@@ -161,7 +161,7 @@ namespace masters {
         const std::string m_nodename = "Masters";
 
         /* other parameters */
-        image_geometry::PinholeCameraModel m_camera_front;
+        image_geometry::PinholeCameraModel m_camera_main;
         //        For SVD part:
         t_hist_vv m_history_linear;
         t_hist_vvt m_history_velocity;
@@ -189,7 +189,7 @@ namespace masters {
         // | ---------------------- msg callbacks --------------------- |
         [[maybe_unused]] void m_cbk_detection(const geometry_msgs::PointStamped &msg);
 
-        [[maybe_unused]] void m_cbk_front_camera(const sensor_msgs::ImageConstPtr &msg);
+        [[maybe_unused]] void m_cbk_main_camera(const sensor_msgs::ImageConstPtr &msg);
 
         [[maybe_unused]] void m_cbk_camera_image_to_detection_svd(const sensor_msgs::ImageConstPtr &msg);
 
@@ -201,19 +201,19 @@ namespace masters {
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
-        ros::Publisher m_pub_front_camera_detection;
         ros::Publisher m_pub_history1;
         ros::Publisher m_pub_history2;
         ros::Publisher m_pub_viz;
         ros::Publisher m_pub_detection;
+        ros::Publisher m_pub_detection_svd;
         ros::Publisher m_pub_target_odom;
 
         // | ----------------------- subscribers ---------------------- |
         mrs_lib::SubscribeHandler<nav_msgs::Odometry> m_subh_eagle_odom;
 
         ros::Subscriber m_sub_detection;
-        ros::Subscriber m_sub_front_camera_detection;
-        ros::Subscriber m_sub_front_camera;
+        ros::Subscriber m_sub_main_camera_detection;
+        ros::Subscriber m_sub_main_camera;
         double m_line_variance = 0.0;
 
         ros::Timer m_tim_kalman;

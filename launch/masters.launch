@@ -37,7 +37,7 @@
       <param name="eagle_name" type="string" value="$(arg UAV_NAME)"/>
       <param name="target_name" type="string" value="/uav2"/>
 
-      <param name="front_camera" type="string" value="/uav91/bluefox_front"/>
+      <param name="main_camera" type="string" value="/uav91/bluefox_front"/>
       <param name="eagle_odometry" type="string" value="/uav91/estimation_manager/ground_truth/odom"/>
 
 <!--        remap image_int  to /uav91/bluefox_front-->

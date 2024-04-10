@@ -2,6 +2,7 @@ dt_kalman: 0.5
 mean: 0.0
 deviation: 1
 correction_th: 2
+history_size: 9
 # svd_static, svd_dynamic, plkf, dkf
 #approach: dkf
 approach: svd_static

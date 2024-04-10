@@ -150,8 +150,15 @@ if __name__ == "__main__":
 
     output_file = "../trajectories/desired_trajectory.txt"  # Output file name
     output_file_target = "../trajectories/desired_trajectory_target.txt"
-
     # Example usage for a circle:
+    x_center = 10.0  # x-coordinate of the circle center
+    y_center = 30.0  # y-coordinate of the circle center
+    z_initial = 5  # Initial z-coordinate
+    radius = 10  # Radius of the circular path
+    linear_velocity = 1  # Desired linear velocity
+    generate_circle(x_center, y_center, z_initial, radius, linear_velocity, output_file)
+
+    # Example usage for a helix:
     # x_center = 0.0  # x-coordinate of the circle center
     # y_center = 0.0  # y-coordinate of the circle center
     # z_initial = 15  # Initial z-coordinate
@@ -162,10 +169,10 @@ if __name__ == "__main__":
     # generate_helix_yz(x_center, y_center, z_initial, radius, v, x_len, inter_len, output_file)
 
     # Example usage for a line:
-    p1 = np.array([100.0, 0.0, 10.0])
-    p2 = np.array([200.0, 0.0, 10.0])
-    v = 1
-    generate_line(p1, p2, v, output_file_target)
+    # p1 = np.array([100.0, 0.0, 10.0])
+    # p2 = np.array([200.0, 0.0, 10.0])
+    # v = 1
+    # generate_line(p1, p2, v, output_file_target)
     #
     # p1 = np.array([10.0, 30.0, 3.0])
     # p2 = np.array([-20.0, 30.0, 3.0])
