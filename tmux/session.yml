@@ -16,7 +16,7 @@ windows:
       layout: tiled
       panes:
       #  - waitForRos; roslaunch mrs_uav_gazebo_simulation simulation.launch world_file:="$EAGLE_GR_DIR/worlds/cisarsky_ostrov.world" gui:=false
-        - waitForRos; roslaunch mrs_uav_gazebo_simulation simulation.launch world_file:="$MRS_GR_DIR/worlds/grass_plane.world" gui:=false
+        - waitForRos; roslaunch mrs_uav_gazebo_simulation simulation.launch world_file:="$MRS_GR_DIR/worlds/grass_plane.world" gui:=false spawner_config:=./config/spawner.yaml
   - rviz:
       layout: tiled
       panes:
@@ -29,7 +29,7 @@ windows:
   - spawn:
       layout: tiled
       panes:
-        - waitForGazebo; rosservice call /mrs_drone_spawner/spawn "91 --eaglemk2 --model_package eagle_gazebo_resources --enable-rangefinder --pos_file `rospack find masters`/tmux/uav_spawn_positions.csv --enable-ground-truth --enable-bluefox-camera"
+        - export UAV_TYPE=eaglemk2; waitForGazebo; rosservice call /mrs_drone_spawner/spawn "91 --eaglemk2 --enable-rangefinder --pos_file `rospack find masters`/tmux/uav_spawn_positions.csv --enable-ground-truth --enable-bluefox-camera"
         - waitForGazebo; rosservice call /mrs_drone_spawner/spawn "2  --f550 --enable-rangefinder --pos_file `rospack find masters`/tmux/uav_spawn_positions.csv --enable-ground-truth"
   - hw_api:
       layout: tiled
@@ -39,7 +39,7 @@ windows:
   - core:
       layout: tiled
       panes:
-        - export UAV_NAME=uav91; waitForHw; roslaunch mrs_uav_core core.launch
+        - export UAV_NAME=uav91; export UAV_TYPE=eaglemk2; waitForHw; roslaunch mrs_uav_core core.launch
           platform_config:="$EAGLE_GR_DIR/config/mrs_uav_system/eaglemk2.yaml"
           custom_config:=./config/custom_config.yaml
           world_config:=./config/world_config.yaml
@@ -69,7 +69,7 @@ windows:
   - tf_connector:
       layout: tiled
       panes:
-        - waitForControl; roslaunch tf_connector tf_connector.launch custom_config:=`rospack find masters`/config/tf_connector.yaml
+        - waitForRos; roslaunch mrs_tf_connector tf_connector.launch custom_config:=`rospack find masters`/config/tf_connector.yaml
   - arm_offboard:
       layout: tiled
       panes:

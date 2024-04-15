@@ -2,6 +2,12 @@
 ## DEFINITION OF THE ARENA
 #
 
+# because mrs likes to change everything all the time without reasoning and break their fckn system
+world_origin:
+  units: "LATLON" # {"UTM, "LATLON"}
+  origin_x: 47.397743
+  origin_y: 8.545594
+
 world_origin_units: "LATLON" # {"UTM, "LATLON"}
 
 world_origin_x: 47.397743
@@ -29,3 +35,29 @@ safety_area:
 
   point_obstacles:
     enabled: false
+
+  enabled: true
+
+  horizontal:
+
+    # the frame of reference in which the points are expressed
+    frame_name: "world_origin"
+
+    # polygon
+    #
+    # x, y [m] for any frame_name except latlon_origin
+    # x = latitude, y = longitude [deg]  for frame_name=="latlon_origin"
+    points: [
+      -5000, -5000,
+      5000,  -5000,
+      5000,  5000,
+      -5000, 5000
+    ]
+
+  vertical:
+
+    # the frame of reference in which the max&min z is expressed
+    frame_name: "world_origin"
+
+    max_z: 50.0
+    min_z: 0.5

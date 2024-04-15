@@ -28,6 +28,9 @@
 #include <mrs_lib/lkf.h>
 #include <mrs_lib/geometry/misc.h>
 
+#include <lidar_tracker/Tracks.h>
+
+
 
 /* other important includes */
 #include <opencv2/core/eigen.hpp>
@@ -142,6 +145,7 @@ namespace masters {
         /* flags */
         bool m_is_initialized = false;
         bool m_is_kalman_initialized = false;
+        bool m_is_real_world = false;
         double m_mean;
         double m_stddev;
         double m_correction_th;
@@ -153,10 +157,13 @@ namespace masters {
 //        std::string m_uav_name;
         std::string m_name_eagle;
         std::string m_name_main_camera;
+        // coming from message, image callback function
         std::string m_name_main_camera_tf;
         std::string m_name_target;
         std::string m_name_world_origin;
         std::string m_name_eagle_odom_msg;
+        std::string m_name_target_odom_msg;
+        std::string m_name_lidar_tracker;
         std::string m_approach;
         const std::string m_nodename = "Masters";
 
@@ -167,7 +174,6 @@ namespace masters {
         t_hist_vvt m_history_velocity;
 
         /* Kalman filter */
-        int m_cnt_update = 0;
         Eigen::Matrix<double, 6, 1> m_state_interceptor;
         Eigen::Vector3d m_position_last_correction;
         Eigen::Matrix<double, 6, 6> m_P0;
@@ -197,7 +203,7 @@ namespace masters {
 
 
         // | --------------------- timer callbacks -------------------- |
-        void update_kalman(Eigen::Vector3d m_detection_vec, ros::Time m_detection_time);
+        void update_kalman(Eigen::Vector3d detection_vec, ros::Time detection_time);
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
@@ -210,10 +216,13 @@ namespace masters {
 
         // | ----------------------- subscribers ---------------------- |
         mrs_lib::SubscribeHandler<nav_msgs::Odometry> m_subh_eagle_odom;
+        mrs_lib::SubscribeHandler<nav_msgs::Odometry> m_subh_target_odom;
+        mrs_lib::SubscribeHandler<lidar_tracker::Tracks> m_subh_pcl_track;
 
         ros::Subscriber m_sub_detection;
         ros::Subscriber m_sub_main_camera_detection;
         ros::Subscriber m_sub_main_camera;
+
         double m_line_variance = 0.0;
 
         ros::Timer m_tim_kalman;
@@ -234,6 +243,10 @@ namespace masters {
                              const ros::Time &detection_time);
 
         void visualise_sphere(const Eigen::Vector3d &pos, const ros::Time &t);
+
+        void postproc(const Eigen::Matrix<double, 6, 1> state,
+                      const Eigen::Matrix<double, 6, 6> covariance,
+                      const ros::Time &t);
 
         std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
         plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,

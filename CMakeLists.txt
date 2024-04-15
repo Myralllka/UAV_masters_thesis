@@ -17,6 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
         visualization_msgs
         image_geometry
         dynamic_reconfigure
+        lidar_tracker
         )
 
 generate_dynamic_reconfigure_options(

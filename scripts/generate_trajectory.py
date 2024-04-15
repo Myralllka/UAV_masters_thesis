@@ -151,10 +151,10 @@ if __name__ == "__main__":
     output_file = "../trajectories/desired_trajectory.txt"  # Output file name
     output_file_target = "../trajectories/desired_trajectory_target.txt"
     # Example usage for a circle:
-    x_center = 10.0  # x-coordinate of the circle center
-    y_center = 30.0  # y-coordinate of the circle center
-    z_initial = 5  # Initial z-coordinate
-    radius = 10  # Radius of the circular path
+    x_center = 0.0  # x-coordinate of the circle center
+    y_center = 0.0  # y-coordinate of the circle center
+    z_initial = 20  # Initial z-coordinate
+    radius = 8  # Radius of the circular path
     linear_velocity = 1  # Desired linear velocity
     generate_circle(x_center, y_center, z_initial, radius, linear_velocity, output_file)
 

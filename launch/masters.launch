@@ -35,14 +35,23 @@
       <param name="world_origin" type="string" value="$(arg UAV_NAME)/world_origin"/>
 
       <param name="eagle_name" type="string" value="$(arg UAV_NAME)"/>
-      <param name="target_name" type="string" value="/uav2"/>
+      <param name="target_name" type="string" value="uav2"/>
 
-      <param name="main_camera" type="string" value="/uav91/bluefox_front"/>
-      <param name="eagle_odometry" type="string" value="/uav91/estimation_manager/ground_truth/odom"/>
+<!--  For the simulation -->
+<!--       <param name="eagle_gt_odometry" type="string" value="estimation_manager/ground_truth/odom"/> -->
+<!--       <param name="target_gt_odometry" type="string" value="/uav2/estimation_manager/ground_truth/odom"/> -->
+<!--       <param name="main_camera" type="string" value="bluefox_front"/> -->
+<!--       <param name="main_camera" type="string" value="bluefox_down"/> -->
 
-<!--        remap image_int  to /uav91/bluefox_front-->
+<!--  For the provided rosbag and real world (I guess) -->
+      <param name="lidar_tracker" type="string" value="lidar_tracker/tracks"/>
+      <param name="eagle_gt_odometry" type="string" value="estimation_manager/ground_truth/odom"/>
+      <param name="target_gt_odometry" type="string" value="/uav2/estimation_manager/ground_truth/odom"/>
+      <param name="main_camera" type="string" value="rgbd_pitched/color"/>
+
+      <!-- remap image_int  to /uav91/bluefox_dowm -->
+
       <!-- ROS parameters config file -->
-<!--          TODO: rosparam file-->
       <rosparam file="$(find masters)/config/default.yaml" />
       <rosparam file="$(find masters)/config/masters.yaml" />
 

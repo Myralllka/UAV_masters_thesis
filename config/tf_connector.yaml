@@ -2,6 +2,12 @@
 connecting_frame_id:
   "common_origin"
 
+#connections:
+#  - root_frame_id: "uav2/fcu"
+#    equal_frame_id: "uav2/rtk_antenna"
+#
+#  - root_frame_id: "uav91/fcu"
+#    equal_frame_id: "uav91/rtk_antenna"
 # these are the tf subtrees to be connected through the respective root frames so that the equal frames are equal
 connections:
   - root_frame_id: "uav2/fcu"

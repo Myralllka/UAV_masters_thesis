@@ -34,8 +34,11 @@ namespace masters {
         pl.loadParam("mean", m_mean);
         pl.loadParam("dt_kalman", m_dt);
         pl.loadParam("deviation", m_stddev);
-        pl.loadParam("eagle_odometry", m_name_eagle_odom_msg);
+        pl.loadParam("eagle_gt_odometry", m_name_eagle_odom_msg);
+        pl.loadParam("target_gt_odometry", m_name_target_odom_msg);
         pl.loadParam("correction_th", m_correction_th);
+        pl.loadParam("lidar_tracker", m_name_lidar_tracker);
+        pl.loadParam("real_world", m_name_lidar_tracker);
 
         if (!pl.loadedSuccessfully()) {
             ROS_ERROR("[%s]: failed to load non-optional parameters!", m_nodename.c_str());
@@ -55,8 +58,8 @@ namespace masters {
         m_pub_image_changed = nh.advertise<sensor_msgs::Image>("changed", 1);
         m_pub_detection = nh.advertise<geometry_msgs::PointStamped>("detection", 1);
         m_pub_detection_svd = nh.advertise<geometry_msgs::PoseArray>("detection_svd", 1);
-        m_pub_history1 = nh.advertise<geometry_msgs::PoseArray>(m_name_eagle + "/history_1", 1);
-        m_pub_history2 = nh.advertise<geometry_msgs::PoseArray>(m_name_eagle + "/history_2", 1);
+        m_pub_history1 = nh.advertise<geometry_msgs::PoseArray>("history_1", 1);
+        m_pub_history2 = nh.advertise<geometry_msgs::PoseArray>("history_2", 1);
         m_pub_viz = nh.advertise<visualization_msgs::Marker>("detection_marker", 1);
         m_pub_target_odom = nh.advertise<nav_msgs::Odometry>(m_nodename + "/detected_target", 1);
 
@@ -73,6 +76,12 @@ namespace masters {
         mrs_lib::construct_object(m_subh_eagle_odom,
                                   shopt,
                                   m_name_eagle_odom_msg);
+        mrs_lib::construct_object(m_subh_target_odom,
+                                  shopt,
+                                  m_name_target_odom_msg);
+        mrs_lib::construct_object(m_subh_pcl_track,
+                                  shopt,
+                                  m_name_lidar_tracker);
         while (ros::ok()) {
             if (handler_caminfo.hasMsg()) {
                 cam_info = *handler_caminfo.getMsg().get();
@@ -94,6 +103,9 @@ namespace masters {
             m_sub_main_camera = nh.subscribe(m_name_main_camera + "/image_raw", 1,
                                              &Masters::m_cbk_main_camera, this);
         } else if (m_approach == "plkf") {
+            m_sub_detection = nh.subscribe("detection", 1, &Masters::m_cbk_detection, this);
+            m_sub_main_camera = nh.subscribe(m_name_main_camera + "/image_raw", 1,
+                                             &Masters::m_cbk_main_camera, this);
 
         } else if (m_approach == "svd_static") {
             m_sub_main_camera_detection = nh.subscribe("detection_svd", 1, &Masters::m_cbk_posearray_svd_pos_vel, this);
@@ -159,6 +171,7 @@ namespace masters {
         }
     }
 
+
     [[maybe_unused]] void Masters::m_cbk_main_camera(const sensor_msgs::ImageConstPtr &msg) {
         if (not m_is_initialized) return;
         const auto detection_opt = m_detect_uav(msg);
@@ -180,10 +193,8 @@ namespace masters {
 
 
     [[maybe_unused]] void Masters::m_cbk_camera_image_to_detection_svd(const sensor_msgs::ImageConstPtr &msg) {
-
         if (not m_is_initialized) return;
         ROS_INFO_THROTTLE(1.0, "[%s]: SVD detection start %s", m_nodename.c_str(), m_approach.c_str());
-//        TODO: rewrite to align it with  m_cbk_main_camera
         const auto detection_opt = m_detect_uav(msg);
         cv::Point2d detection;
         if (detection_opt.has_value()) {
@@ -228,7 +239,7 @@ namespace masters {
         cv::Point3d ray_to_detection_original = m_camera_main.projectPixelTo3dRay({ray_to_detection.x,
                                                                                    ray_to_detection.y});
 
-        auto ray_opt = m_transformer.transformAsPoint("uav91/bluefox_front_optical",
+        auto ray_opt = m_transformer.transformAsPoint(m_name_main_camera_tf,
                                                       vec3{ray_to_detection_original.x,
                                                            ray_to_detection_original.y,
                                                            ray_to_detection_original.z},
@@ -275,16 +286,14 @@ namespace masters {
         Eigen::Matrix<double, 6, 1> state_interceptor_new;
         if (m_subh_eagle_odom.hasMsg()) {
             const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
+            const auto ps = msg_eagle_odom->pose.pose.position;
+            const auto tw = msg_eagle_odom->twist.twist.linear;
             const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_eagle_odom->header.frame_id,
-                                                                        {msg_eagle_odom->pose.pose.position.x,
-                                                                         msg_eagle_odom->pose.pose.position.y,
-                                                                         msg_eagle_odom->pose.pose.position.z},
+                                                                        {ps.x, ps.y, ps.z},
                                                                         m_name_world_origin,
                                                                         msg_eagle_odom->header.stamp);
             const auto new_twist_st_opt = m_transformer.transformAsVector(msg_eagle_odom->child_frame_id,
-                                                                          {msg_eagle_odom->twist.twist.linear.x,
-                                                                           msg_eagle_odom->twist.twist.linear.y,
-                                                                           msg_eagle_odom->twist.twist.linear.z},
+                                                                          {tw.x, tw.y, tw.z},
                                                                           m_name_world_origin,
                                                                           msg_eagle_odom->header.stamp);
             if (new_pose_st_opt.has_value() and new_twist_st_opt.has_value()) {
@@ -304,64 +313,121 @@ namespace masters {
 
             // Predict always
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman predict", m_nodename.c_str());
-            dkf_t::u_t u;
-            u.setZero();
-
-            Eigen::Matrix<double, 6, 6> Q = B * m_Q * B.transpose();
-
-            try {
-                m_state_vec = m_dkf.predict(m_state_vec, u, Q, dt);
-            }
-            catch (const std::exception &e) {
-                ROS_ERROR("DKF predict failed: %s", e.what());
-            }
-
-            // Correct based on the distance moved
-            if ((state_interceptor_new.segment<3>(0) - m_position_last_correction).norm() >= m_correction_th) {
-                m_cnt_update = 0;
-                ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
-
+            if (m_approach == "dkf") {
+                dkf_t::u_t u;
+                u.setZero();
+                Eigen::Matrix<double, 6, 6> Q = B * m_Q * B.transpose();
                 try {
-                    m_state_vec = m_dkf.correctLine(m_state_vec,
-                                                    state_interceptor_new.segment<3>(0),
-                                                    detection_vec,
-                                                    m_line_variance);
+                    m_state_vec = m_dkf.predict(m_state_vec, u, Q, dt);
                 }
                 catch (const std::exception &e) {
-                    ROS_ERROR("DKF correct failed: %s", e.what());
+                    ROS_ERROR("DKF predict failed: %s", e.what());
                 }
-                m_position_last_correction = state_interceptor_new.segment<3>(0);
+            } else if (m_approach == "plkf") {
+                std::tie(m_state_vec.x, m_state_vec.P) = plkf_predict(m_state_vec.x,
+                                                                      m_state_vec.P,
+                                                                      m_state_interceptor,
+                                                                      state_interceptor_new,
+                                                                      dt);
             }
 
-
+            // Correct based on the distance moved from the previous position
+            ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
+            if (m_approach == "dkf") {
+                if ((state_interceptor_new.segment<3>(0) - m_position_last_correction).norm() >= m_correction_th) {
+                    try {
+                        m_state_vec = m_dkf.correctLine(m_state_vec,
+                                                        state_interceptor_new.segment<3>(0),
+                                                        detection_vec,
+                                                        m_line_variance);
+                    }
+                    catch (const std::exception &e) {
+                        ROS_ERROR("DKF correct failed: %s", e.what());
+                    }
+                    m_position_last_correction = state_interceptor_new.segment<3>(0);
+                }
+            } else if (m_approach == "plkf") {
+                std::tie(m_state_vec.x, m_state_vec.P) = plkf_correct(m_state_vec.x, m_state_vec.P, detection_vec);
+            }
         } else {
             // initialise
+            m_dkf = dkf_t(A, dkf_t::B_t::Zero());
+            Eigen::Matrix<double, 6, 1> x_k;
+            x_k.setZero();
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman initialise", m_nodename.c_str());
-//            initial estimation is a real position and velocity of a target
-            const auto opt_est_init = m_transformer.transformAsPoint(m_name_main_camera_tf,
-                                                                     Eigen::Vector3d{0, 0, 10},
-                                                                     m_name_world_origin,
-                                                                     detection_time);
-            if (opt_est_init.has_value()) {
-                m_dkf = dkf_t(A, dkf_t::B_t::Zero());
+            if (not m_is_real_world and m_subh_target_odom.hasMsg()) {
+                const auto msg_target_odom = m_subh_target_odom.getMsg();
+                const auto ps = msg_target_odom->pose.pose.position;
+                const auto tw = msg_target_odom->twist.twist.linear;
+                const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_target_odom->header.frame_id,
+                                                                            {ps.x, ps.y, ps.z},
+                                                                            m_name_world_origin,
+                                                                            msg_target_odom->header.stamp);
+                const auto new_twist_st_opt = m_transformer.transformAsVector(msg_target_odom->child_frame_id,
+                                                                              {tw.x, tw.y, tw.z},
+                                                                              m_name_world_origin,
+                                                                              msg_target_odom->header.stamp);
+                if (new_pose_st_opt.has_value() and new_twist_st_opt.has_value()) {
+                    const auto pos = new_pose_st_opt.value();
+                    const auto vel = new_twist_st_opt.value();
+                    if (m_approach == "dkf") {
+// state for the DKF is the absolute position of the target in a common frame
+                        x_k[0] = pos.x();
+                        x_k[1] = pos.y();
+                        x_k[2] = pos.z();
+                        x_k[3] = vel.x();
+                        x_k[4] = vel.y();
+                        x_k[5] = vel.z();
+                    } else if (m_approach == "plkf") {
+//  state for the PLKF is the relative pos and vel of a target with respect to the interceptor
+                        x_k[0] = pos.x() - state_interceptor_new[0];
+                        x_k[1] = pos.y() - state_interceptor_new[1];
+                        x_k[2] = pos.z() - state_interceptor_new[2];
+                        x_k[3] = vel.x() - state_interceptor_new[3];
+                        x_k[4] = vel.y() - state_interceptor_new[4];
+                        x_k[5] = vel.z() - state_interceptor_new[5];
+                    }
+                    m_state_vec.x = x_k;
+                    m_state_vec.P = m_P0;
+                } else {
+                    ROS_ERROR("[%s]: pose or twist transformation for dkf init has no value", m_nodename.c_str());
+                    return;
+                }
 
-                Eigen::Matrix<double, 6, 1> x_k;
-                x_k.setZero();
-                x_k.x() = opt_est_init->x();
-                x_k.y() = opt_est_init->y();
-                x_k.z() = opt_est_init->z();
-                x_k[3] = 0;
-                x_k[4] = 0;
-                x_k[5] = 0;
-                m_state_vec.x = x_k;
-                m_state_vec.P = m_P0;
-                m_position_last_correction = x_k.head(3);
-
+            } else if (m_is_real_world and m_subh_pcl_track.hasMsg()) {
+                const auto tracks = m_subh_pcl_track.getMsg();
+                bool is_selected = false;
+                for (const auto &track: tracks.get()->tracks) {
+                    if (track.selected) {
+                        is_selected = true;
+                        const geometry_msgs::Point pos = track.position;
+                        const geometry_msgs::Vector3 vel = track.velocity;
+                        if (m_approach == "dkf") {
+// state for the DKF is the absolute position of the target in a common frame
+                            x_k[0] = pos.x;
+                            x_k[1] = pos.y;
+                            x_k[2] = pos.z;
+                            x_k[3] = vel.x;
+                            x_k[4] = vel.y;
+                            x_k[5] = vel.z;
+                        } else if (m_approach == "plkf") {
+//  state for the PLKF is the relative pos and vel of a target with respect to the interceptor
+                            x_k[0] = pos.x - state_interceptor_new[0];
+                            x_k[1] = pos.y - state_interceptor_new[1];
+                            x_k[2] = pos.z - state_interceptor_new[2];
+                            x_k[3] = vel.x - state_interceptor_new[3];
+                            x_k[4] = vel.y - state_interceptor_new[4];
+                            x_k[5] = vel.z - state_interceptor_new[5];
+                        }
+                        m_state_vec.x = x_k;
+                        m_state_vec.P = m_P0;
+                    }
+                }
+                if (not is_selected) {
+                    ROS_ERROR("[%s]: No tracks *selected* found ", m_nodename.c_str());
+                }
             } else {
-                ROS_ERROR("[%s]: No transformation from %s to %s ",
-                          m_nodename.c_str(),
-                          m_name_world_origin.c_str(),
-                          m_name_main_camera_tf.c_str());
+                ROS_ERROR("[%s]: No odometry msg from %s", m_nodename.c_str(), m_name_eagle_odom_msg.c_str());
                 return;
             }
             ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
@@ -370,13 +436,15 @@ namespace masters {
 
         const Eigen::Matrix<double, 6, 1> m_x_k = m_state_vec.x;
         const Eigen::Matrix<double, 6, 6> m_P_k = m_state_vec.P;
-
-        visualise_odometry(m_x_k, m_P_k, detection_time);
+        postproc(m_x_k, m_P_k, detection_time);
         visualise_arrow(state_interceptor_new.head(3),
                         state_interceptor_new.head(3) + detection_vec,
                         detection_time);
-        visualise_sphere(state_interceptor_new.head(3) + detection_vec, detection_time);
-
+        if (m_approach == "dkf") {
+            visualise_sphere(state_interceptor_new.head(3) + detection_vec, detection_time);
+        } else if (m_approach == "plkf") {
+            visualise_sphere(state_interceptor_new.head(3) + m_x_k.head(3), detection_time);
+        }
         m_state_interceptor = state_interceptor_new;
     }
 
@@ -410,7 +478,7 @@ namespace masters {
         Hk.setZero();
         Hk.block<3, 3>(0, 0) = Plk;
 
-        Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * m_R * Vk.transpose() * m_dt;
+        Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * m_R * Vk.transpose();
 //        Eigen::Matrix3d pinv = Masters::pseudoinverse(ps);
         Eigen::CompleteOrthogonalDecomposition<Eigen::Matrix3d> cod(ps);
         Eigen::Matrix3d pinv = cod.pseudoInverse();
@@ -458,8 +526,6 @@ namespace masters {
             ROS_INFO_THROTTLE(1.0, "[%s]: history size is smaller/equal 1", m_nodename.c_str());
             m_history_linear.push_back(std::pair{pos_origin, pos_s});
             m_history_velocity.push_back(std::tuple{pos_origin, pos_s, msg.header.stamp});
-            std::cout << m_history_linear.size() << std::endl;
-            std::cout << m_history_velocity.size() << std::endl;
             return;
         }
         if ((pos_origin - std::get<0>(m_history_velocity.back())).norm() > m_correction_th) {
@@ -472,12 +538,9 @@ namespace masters {
             vec3 position, velocity;
             if (m_approach == "svd_dynamic") {
                 std::tie(position, velocity) = m_find_intersection_svd_velocity_obj(m_history_velocity);
-                std::cout << position << std::endl;
-                std::cout << position << std::endl;
                 velocity = {0, 0, 0};
             } else if (m_approach == "svd_static") {
                 position = m_find_intersection_svd_static_obj(m_history_linear);
-                std::cout << position << std::endl;
                 velocity = {0, 0, 0};
             } else {
                 ROS_ERROR("[%s] unknown approach; shutting down...", m_nodename.c_str());
@@ -493,40 +556,21 @@ namespace masters {
             const double z = position.z() + velocity.z() * (time_now - m_t0).toSec();
             Eigen::Matrix<double, 6, 1> state;
             state << x, y, z, velocity.x(), velocity.y(), velocity.z();
-            ROS_INFO_THROTTLE(1.0, "[%s]: visualising odometry...", m_nodename.c_str());
-            visualise_odometry(state,
-                               Eigen::Matrix<double, 6, 6>::Identity(),
-                               msg.header.stamp);
+            postproc(state,
+                     Eigen::Matrix<double, 6, 6>::Identity(),
+                     msg.header.stamp);
             ROS_INFO_THROTTLE(1.0, "[%s]: visualising sphere...", m_nodename.c_str());
             visualise_sphere(state.head(3), msg.header.stamp);
-
-//            visualization_msgs::Marker marker;
-//            marker.header.frame_id = m_name_world_origin;
-//            marker.header.stamp = msg.header.stamp;
-//            marker.ns = "my_namespace";
-//            marker.id = 0;
-//            marker.type = visualization_msgs::Marker::SPHERE;
-//            marker.action = visualization_msgs::Marker::MODIFY;
-//
-//            const auto time_now = msg.header.stamp;
-//            marker.pose.position.x = position.x() + velocity.x() * (time_now - m_t0).toSec();
-//            marker.pose.position.y = position.y() + velocity.y() * (time_now - m_t0).toSec();
-//            marker.pose.position.z = position.z() + velocity.z() * (time_now - m_t0).toSec();
-//
-//            marker.scale.x = 1;
-//            marker.scale.y = 1;
-//            marker.scale.z = 1;
-//
-//            marker.color.a = 1.0; // Don't forget to set the alpha!
-//            marker.color.r = 0.0;
-//            marker.color.g = 1.0;
-//            marker.color.b = 0.0;
-//
-//            m_pub_viz.publish(marker);
         }
-
     }
 
+    void Masters::postproc(const Eigen::Matrix<double, 6, 1> state,
+                           const Eigen::Matrix<double, 6, 6> covariance,
+                           const ros::Time &t) {
+//            TODO: save/publish an additional data here
+        ROS_INFO_THROTTLE(1.0, "[%s]: visualising odometry...", m_nodename.c_str());
+        visualise_odometry(state, covariance, t);
+    }
 
 // | --------------------- timer callbacks -------------------- |
 
@@ -601,7 +645,7 @@ namespace masters {
     }
 
     std::optional<cv::Point2d> Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
-        auto T_eagle2drone_opt = m_transformer.getTransform("uav2/fcu",
+        auto T_eagle2drone_opt = m_transformer.getTransform(m_name_target + "/fcu",
                                                             msg->header.frame_id,
                                                             msg->header.stamp);
         if (!T_eagle2drone_opt.has_value()) {

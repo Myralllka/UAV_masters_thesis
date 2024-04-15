@@ -3,6 +3,9 @@ mean: 0.0
 deviation: 1
 correction_th: 2
 history_size: 9
+
+real_world: True
+
 # svd_static, svd_dynamic, plkf, dkf
 #approach: dkf
-approach: svd_static
+approach: plkf
