@@ -44,10 +44,10 @@
 <!--       <param name="main_camera" type="string" value="bluefox_down"/> -->
 
 <!--  For the provided rosbag and real world (I guess) -->
-      <param name="lidar_tracker" type="string" value="lidar_tracker/tracks"/>
-      <param name="eagle_gt_odometry" type="string" value="estimation_manager/ground_truth/odom"/>
+      <param name="lidar_tracker" type="string" value="/$(arg UAV_NAME)/lidar_tracker/tracks"/>
+      <param name="eagle_gt_odometry" type="string" value="/$(arg UAV_NAME)/estimation_manager/ground_truth/odom"/>
       <param name="target_gt_odometry" type="string" value="/uav2/estimation_manager/ground_truth/odom"/>
-      <param name="main_camera" type="string" value="rgbd_pitched/color"/>
+      <param name="main_camera" type="string" value="/$(arg UAV_NAME)/rgbd_pitched/color"/>
 
       <!-- remap image_int  to /uav91/bluefox_dowm -->
 

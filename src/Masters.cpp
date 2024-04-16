@@ -29,7 +29,7 @@ namespace masters {
         pl.loadParam("target_name", m_name_target);
         pl.loadParam("world_origin", m_name_world_origin);
         pl.loadParam("history_size", m_history_buf_size);
-
+        pl.loadParam("real_world", m_is_real_world);
         pl.loadParam("main_camera", m_name_main_camera);
         pl.loadParam("mean", m_mean);
         pl.loadParam("dt_kalman", m_dt);
@@ -38,7 +38,6 @@ namespace masters {
         pl.loadParam("target_gt_odometry", m_name_target_odom_msg);
         pl.loadParam("correction_th", m_correction_th);
         pl.loadParam("lidar_tracker", m_name_lidar_tracker);
-        pl.loadParam("real_world", m_name_lidar_tracker);
 
         if (!pl.loadedSuccessfully()) {
             ROS_ERROR("[%s]: failed to load non-optional parameters!", m_nodename.c_str());

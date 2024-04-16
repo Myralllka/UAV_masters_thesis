@@ -8,4 +8,4 @@ real_world: True
 
 # svd_static, svd_dynamic, plkf, dkf
 #approach: dkf
-approach: plkf
+approach: dkf

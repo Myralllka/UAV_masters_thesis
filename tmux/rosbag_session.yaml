@@ -19,8 +19,8 @@ windows:
   - rviz:
       layout: tiled
       panes:
-        - waitForControl; rviz -d `rospack find masters`/rviz/testing.rviz
+        - waitForRos; rviz -d `rospack find masters`/rviz/testing.rviz
   - masters:
       layout: tiled
       panes:
-        - export UAV_NAME=uav91; export RUN_TYPE=simulation; waitForControl; roslaunch masters masters.launch
+        - export UAV_NAME=uav91; export RUN_TYPE=simulation; waitForRos; roslaunch masters masters.launch
