@@ -31,13 +31,19 @@ namespace masters {
         pl.loadParam("history_size", m_history_buf_size);
         pl.loadParam("real_world", m_is_real_world);
         pl.loadParam("main_camera", m_name_main_camera);
+        pl.loadParam("approx_drone_size_for_bbox_height", m_drone_h);
+        pl.loadParam("approx_drone_size_for_bbox_width", m_drone_w);
         pl.loadParam("mean", m_mean);
+        pl.loadParam("imhint", m_image_transport_hint);
         pl.loadParam("dt_kalman", m_dt);
         pl.loadParam("deviation", m_stddev);
         pl.loadParam("eagle_gt_odometry", m_name_eagle_odom_msg);
         pl.loadParam("target_gt_odometry", m_name_target_odom_msg);
+        pl.loadParam("time_th", m_time_th);
         pl.loadParam("correction_th", m_correction_th);
-        pl.loadParam("lidar_tracker", m_name_lidar_tracker);
+        if (m_is_real_world) {
+            pl.loadParam("lidar_tracker", m_name_lidar_tracker);
+        }
 
         if (!pl.loadedSuccessfully()) {
             ROS_ERROR("[%s]: failed to load non-optional parameters!", m_nodename.c_str());
@@ -96,25 +102,27 @@ namespace masters {
 
         m_t0 = ros::Time::now();
         m_camera_main.fromCameraInfo(cam_info);
+        image_transport::ImageTransport it(nh);
+        const image_transport::TransportHints hint(m_image_transport_hint);
         ROS_INFO("[%s]: approach used: %s", m_nodename.c_str(), m_approach.c_str());
         if (m_approach == "dkf") {
             m_sub_detection = nh.subscribe("detection", 1, &Masters::m_cbk_detection, this);
-            m_sub_main_camera = nh.subscribe(m_name_main_camera + "/image_raw", 1,
-                                             &Masters::m_cbk_main_camera, this);
+            m_sub_main_camera = it.subscribe(m_name_main_camera + "/image_raw", 1,
+                                             &Masters::m_cbk_main_camera, this, hint);
         } else if (m_approach == "plkf") {
             m_sub_detection = nh.subscribe("detection", 1, &Masters::m_cbk_detection, this);
-            m_sub_main_camera = nh.subscribe(m_name_main_camera + "/image_raw", 1,
-                                             &Masters::m_cbk_main_camera, this);
+            m_sub_main_camera = it.subscribe(m_name_main_camera + "/image_raw", 1,
+                                             &Masters::m_cbk_main_camera, this, hint);
 
         } else if (m_approach == "svd_static") {
             m_sub_main_camera_detection = nh.subscribe("detection_svd", 1, &Masters::m_cbk_posearray_svd_pos_vel, this);
-            m_sub_main_camera = nh.subscribe(m_name_main_camera + "/image_raw", 1,
-                                             &Masters::m_cbk_camera_image_to_detection_svd, this);
+            m_sub_main_camera = it.subscribe(m_name_main_camera + "/image_raw", 1,
+                                             &Masters::m_cbk_camera_image_to_detection_svd, this, hint);
 
         } else if (m_approach == "svd_dynamic") {
             m_sub_main_camera_detection = nh.subscribe("detection_svd", 1, &Masters::m_cbk_posearray_svd_pos_vel, this);
-            m_sub_main_camera = nh.subscribe(m_name_main_camera + "/image_raw", 1,
-                                             &Masters::m_cbk_camera_image_to_detection_svd, this);
+            m_sub_main_camera = it.subscribe(m_name_main_camera + "/image_raw", 1,
+                                             &Masters::m_cbk_camera_image_to_detection_svd, this, hint);
 
         } else {
             ROS_ERROR("[%s]: unknown m_aproach", m_nodename.c_str());
@@ -174,10 +182,17 @@ namespace masters {
     [[maybe_unused]] void Masters::m_cbk_main_camera(const sensor_msgs::ImageConstPtr &msg) {
         if (not m_is_initialized) return;
         const auto detection_opt = m_detect_uav(msg);
+//        const auto detection_opt_lr = m_detect_uav_with_bbox(msg);
+
         m_name_main_camera_tf = msg->header.frame_id;
 
         if (detection_opt.has_value()) {
             cv::Point2d detection = detection_opt.value();
+//            double lm, rm;
+//            std::tie(detection, lm, rm) = detection_opt_lr.value();
+//            std::cout << lm << std::endl;
+//            std::cout << rm << std::endl;
+
             geometry_msgs::PointStamped det_ros_msg;
             det_ros_msg.header = msg->header;
             det_ros_msg.point.x = detection.x;
@@ -306,7 +321,7 @@ namespace masters {
             ROS_ERROR("[%s]: No odometry msg from %s", m_nodename.c_str(), m_name_eagle_odom_msg.c_str());
             return;
         }
-
+//        if (m_is_kalman_initialized and dt <= m_time_th) {
         if (m_is_kalman_initialized) {
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman is initialised", m_nodename.c_str());
 
@@ -358,17 +373,20 @@ namespace masters {
                 const auto msg_target_odom = m_subh_target_odom.getMsg();
                 const auto ps = msg_target_odom->pose.pose.position;
                 const auto tw = msg_target_odom->twist.twist.linear;
-                const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_target_odom->header.frame_id,
-                                                                            {ps.x, ps.y, ps.z},
-                                                                            m_name_world_origin,
-                                                                            msg_target_odom->header.stamp);
-                const auto new_twist_st_opt = m_transformer.transformAsVector(msg_target_odom->child_frame_id,
-                                                                              {tw.x, tw.y, tw.z},
-                                                                              m_name_world_origin,
-                                                                              msg_target_odom->header.stamp);
-                if (new_pose_st_opt.has_value() and new_twist_st_opt.has_value()) {
-                    const auto pos = new_pose_st_opt.value();
-                    const auto vel = new_twist_st_opt.value();
+//                const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_target_odom->header.frame_id,
+//                                                                            {ps.x, ps.y, ps.z},
+//                                                                            m_name_world_origin,
+//                                                                            msg_target_odom->header.stamp);
+//                const auto new_twist_st_opt = m_transformer.transformAsVector(msg_target_odom->child_frame_id,
+//                                                                              {tw.x, tw.y, tw.z},
+//                                                                              m_name_world_origin,
+//                                                                              msg_target_odom->header.stamp);
+//                if (new_pose_st_opt.has_value() and new_twist_st_opt.has_value()) {
+                if (true) {
+//                    const auto pos = new_pose_st_opt.value();
+//                    const auto vel = new_twist_st_opt.value();
+                    const Eigen::Vector3d pos{ps.x, ps.y, ps.z};
+                    const Eigen::Vector3d vel{tw.x, tw.y, tw.z};
                     if (m_approach == "dkf") {
 // state for the DKF is the absolute position of the target in a common frame
                         x_k[0] = pos.x();
@@ -394,6 +412,8 @@ namespace masters {
                 }
 
             } else if (m_is_real_world and m_subh_pcl_track.hasMsg()) {
+                ROS_INFO("[%s]: is_real_world set to use the lidar, or there are no msgs from the %s",
+                         m_nodename.c_str(), m_name_target_odom_msg.c_str());
                 const auto tracks = m_subh_pcl_track.getMsg();
                 bool is_selected = false;
                 for (const auto &track: tracks.get()->tracks) {
@@ -426,7 +446,8 @@ namespace masters {
                     ROS_ERROR("[%s]: No tracks *selected* found ", m_nodename.c_str());
                 }
             } else {
-                ROS_ERROR("[%s]: No odometry msg from %s", m_nodename.c_str(), m_name_eagle_odom_msg.c_str());
+                ROS_ERROR("[%s]: No lidar tracks from %s", m_nodename.c_str(),
+                          m_subh_pcl_track.subscribedTopicName().c_str());
                 return;
             }
             ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
@@ -584,7 +605,6 @@ namespace masters {
         const int n_c = 3 + n_pts;
 
         Eigen::MatrixXd A = Eigen::MatrixXd::Zero(n_r, n_c);
-        // A.fill(0);
         Eigen::VectorXd b(n_r);
 
         int r_idx = 0;
@@ -644,18 +664,51 @@ namespace masters {
     }
 
     std::optional<cv::Point2d> Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
-        auto T_eagle2drone_opt = m_transformer.getTransform(m_name_target + "/fcu",
-                                                            msg->header.frame_id,
-                                                            msg->header.stamp);
-        if (!T_eagle2drone_opt.has_value()) {
-            ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR wrong detection");
+        const auto msg_target_odom = m_subh_target_odom.getMsg();
+        const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
+        const auto ps_tgt = msg_target_odom->pose.pose.position;
+        const auto ps_eagle = msg_eagle_odom->pose.pose.position;
+
+        const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_target_odom->header.frame_id,
+                                                                    {ps_tgt.x, ps_tgt.y, ps_tgt.z},
+                                                                    m_name_world_origin,
+                                                                    msg->header.stamp);
+        const auto new_pose_eagle_opt = m_transformer.transformAsPoint(msg_eagle_odom->header.frame_id,
+                                                                       {ps_eagle.x, ps_eagle.y, ps_eagle.z},
+                                                                       m_name_world_origin,
+                                                                       msg->header.stamp);
+
+        Eigen::Vector3d dir_vec, dir_vec_tmp;
+        if (new_pose_eagle_opt.has_value()) {
+            Eigen::Vector3d pos_tgt = {ps_tgt.x, ps_tgt.y, ps_tgt.z};
+            const auto pos_eagle = new_pose_eagle_opt.value();
+            if (new_pose_st_opt.has_value()) {
+                const auto pos_tgt_auto = new_pose_st_opt.value();
+                pos_tgt = Eigen::Vector3d{pos_tgt_auto.x(), pos_tgt_auto.y(), pos_tgt_auto.z()};
+            }
+            std::cout << pos_tgt << std::endl;
+            std::cout << pos_eagle << std::endl;
+            visualise_arrow(pos_eagle, pos_tgt, msg->header.stamp);
+//  state for the PLKF is the relative pos and vel of a target with respect to the interceptor
+            dir_vec_tmp = pos_tgt - pos_eagle;
+            const auto new_dirvec = m_transformer.transformAsVector(m_name_world_origin,
+                                                                           dir_vec_tmp,
+                                                                           msg->header.frame_id,
+                                                                           msg->header.stamp);
+            if (new_dirvec.has_value()) {
+                dir_vec = new_dirvec.value();
+            } else {
+                std::cout << "FUCK IT ALL" << std::endl;
+            }
+            std::cout << dir_vec << std::endl;
+        } else {
+            ROS_ERROR("[%s]: pose transformation for detection init has no value", m_nodename.c_str());
             return std::nullopt;
         }
-        const geometry_msgs::TransformStamped T_eagle2drone = T_eagle2drone_opt.value();;
-        const Eigen::Vector3d dir_vec(tf2::transformToEigen(T_eagle2drone.transform).translation().data());
-        if (dir_vec.z() < 0) {
-            return std::nullopt;
-        }
+//        if (dir_vec.z() < 0) {
+//            ROS_ERROR("[%s]: pose is behind the image plane", m_nodename.c_str());
+//            return std::nullopt;
+//        }
         const auto pt_ideal = m_camera_main.project3dToPixel(cv::Point3d(dir_vec.x(), dir_vec.y(), dir_vec.z()));
         std::random_device rseed;
         std::mt19937 rng(rseed());
@@ -663,13 +716,105 @@ namespace masters {
         double e_x = dist(rng), e_y = dist(rng);
 
         const cv::Point2d pt_noisy{pt_ideal.x + e_x, pt_ideal.y + e_y};
-        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_main.cameraInfo().width or
-            pt_noisy.y < 0 or pt_noisy.y > m_camera_main.cameraInfo().height) {
-            return std::nullopt;
-        }
+//        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_main.cameraInfo().width or
+//            pt_noisy.y < 0 or pt_noisy.y > m_camera_main.cameraInfo().height) {
+//            return std::nullopt;
+//        }
+        std::cout << pt_noisy << std::endl;
+        // visualize detection
+        cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
+        cv::circle(image, pt_noisy, 20, cv::Scalar(255, 0, 0), 2);
+        m_pub_image_changed.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg());
         return pt_noisy;
     }
 
+//    std::optional<cv::Point2d> Masters::m_detect_uav_old(const sensor_msgs::Image::ConstPtr &msg) {
+//        auto T_eagle2drone_opt = m_transformer.getTransform(m_name_target + "/fcu",
+//                                                            msg->header.frame_id,
+//                                                            msg->header.stamp);
+//        if (!T_eagle2drone_opt.has_value()) {
+//            ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR wrong detection");
+//            return std::nullopt;
+//        }
+//        const geometry_msgs::TransformStamped T_eagle2drone = T_eagle2drone_opt.value();;
+//        const Eigen::Vector3d dir_vec(tf2::transformToEigen(T_eagle2drone.transform).translation().data());
+//        if (dir_vec.z() < 0) {
+//            return std::nullopt;
+//        }
+////        if (dir_vec.z() < 0) {
+////            ROS_ERROR("[%s]: pose is behind the image plane", m_nodename.c_str());
+////            return std::nullopt;
+////        }
+//        const auto pt_ideal = m_camera_main.project3dToPixel(cv::Point3d(dir_vec.x(), dir_vec.y(), dir_vec.z()));
+//        std::random_device rseed;
+//        std::mt19937 rng(rseed());
+//        std::normal_distribution<double> dist(m_mean, m_stddev);
+//        double e_x = dist(rng), e_y = dist(rng);
+//
+//        const cv::Point2d pt_noisy{pt_ideal.x + e_x, pt_ideal.y + e_y};
+////        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_main.cameraInfo().width or
+////            pt_noisy.y < 0 or pt_noisy.y > m_camera_main.cameraInfo().height) {
+////            return std::nullopt;
+////        }
+//        return pt_noisy;
+//    }
+
+//    std::optional<std::tuple<cv::Point2d, double, double>>
+//    Masters::m_detect_uav_with_bbox(const sensor_msgs::Image::ConstPtr &msg) {
+//        auto T_eagle2drone_opt = m_transformer.getTransform(m_name_target + "/fcu",
+//                                                            msg->header.frame_id,
+//                                                            msg->header.stamp);
+//        if (!T_eagle2drone_opt.has_value()) {
+//            ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR wrong detection");
+//            return std::nullopt;
+//        }
+//        const geometry_msgs::TransformStamped T_eagle2drone = T_eagle2drone_opt.value();
+//        const Eigen::Vector3d dir_vec(tf2::transformToEigen(T_eagle2drone.transform).translation().data());
+//        std::vector<cv::Point3d> bbox_pts;
+////                Eigen::Vector3d{dir_vec.x() + m_drone_w, dir_vec.y() + m_drone_w, dir_vec.z() + m_drone_h},
+////                Eigen::Vector3d{dir_vec.x() - m_drone_w, dir_vec.y() + m_drone_w, dir_vec.z() + m_drone_h},
+////                Eigen::Vector3d{dir_vec.x() + m_drone_w, dir_vec.y() - m_drone_w, dir_vec.z() + m_drone_h},
+////                Eigen::Vector3d{dir_vec.x() - m_drone_w, dir_vec.y() - m_drone_w, dir_vec.z() + m_drone_h},
+////                Eigen::Vector3d{dir_vec.x() + m_drone_w, dir_vec.y() + m_drone_w, dir_vec.z() - m_drone_h},
+////                Eigen::Vector3d{dir_vec.x() - m_drone_w, dir_vec.y() + m_drone_w, dir_vec.z() - m_drone_h},
+////                Eigen::Vector3d{dir_vec.x() + m_drone_w, dir_vec.y() - m_drone_w, dir_vec.z() - m_drone_h},
+////                Eigen::Vector3d{dir_vec.x() - m_drone_w, dir_vec.y() - m_drone_w, dir_vec.z() - m_drone_h},
+////      construct an array representing the bbox
+//        for (int i = 0; i < 8; ++i) {
+//            bbox_pts.push_back(cv::Point3d{dir_vec.x() + std::pow(-1, i) * m_drone_w,
+//                                           dir_vec.y() + std::pow(-1, i / 2) * m_drone_w,
+//                                           dir_vec.z() + std::pow(-1, i / 4) * m_drone_h});
+//        }
+//        if (dir_vec.z() < 0) {
+//            return std::nullopt;
+//        }
+////        project the bounding box on the image
+//        const auto pt_ideal = m_camera_main.project3dToPixel(cv::Point3d(dir_vec.x(), dir_vec.y(), dir_vec.z()));
+//        std::vector<cv::Point2d> bbox_projected;
+//        double leftmost{std::numeric_limits<double>::max()};
+//        double rightmost{std::numeric_limits<double>::min()};
+//        std::cout << "----------------------------" << std::endl;
+//        for (const auto &pt: bbox_pts) {
+//            const auto pt_proj = m_camera_main.project3dToPixel(pt);
+//            std::cout << pt_proj << std::endl;
+//            leftmost = pt_proj.x ? pt_proj.x < leftmost : leftmost;
+//            rightmost = pt_proj.x ? pt_proj.x > rightmost : rightmost;
+//            bbox_projected.push_back(pt_proj);
+//        }
+//
+//        std::random_device rseed;
+//        std::mt19937 rng(rseed());
+//        std::normal_distribution<double> dist(m_mean, m_stddev);
+//        double e_x = dist(rng), e_y = dist(rng);
+//
+//        const cv::Point2d pt_noisy{pt_ideal.x + e_x, pt_ideal.y + e_y};
+//        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_main.cameraInfo().width or
+//            pt_noisy.y < 0 or pt_noisy.y > m_camera_main.cameraInfo().height) {
+//            return std::nullopt;
+//        }
+//        return std::tuple{pt_noisy, leftmost, rightmost};
+//    }
+//
     void Masters::visualise_odometry(const Eigen::Matrix<double, 6, 1> state,
                                      const Eigen::Matrix<double, 6, 6> covariance,
                                      const ros::Time &t) {

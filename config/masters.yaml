@@ -1,10 +1,17 @@
-dt_kalman: 0.5
-mean: 0.0
-deviation: 1
-correction_th: 2
+dt_kalman: 0.5 # [s]
+mean: 0.0 # [s]
+deviation: 1 # [px}
+correction_th: 2 # [m]
+time_th: 5 # [s], after how meny seconds the reinitialisation should be done
 history_size: 9
 
-real_world: True
+approx_drone_size_for_bbox_height: 0.2 # [m] size of the drone from the center to the top/bottom
+approx_drone_size_for_bbox_width: 0.2 # [m] size of the drone from the center diagonally
+real_world: False
+
+# image transport hints:
+# https://docs.ros.org/en/api/image_transport/html/classimage__transport_1_1TransportHints.html
+imhint: compressed
 
 # svd_static, svd_dynamic, plkf, dkf
 #approach: dkf

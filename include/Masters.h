@@ -14,6 +14,8 @@
 #include <nav_msgs/Odometry.h>
 #include <dynamic_reconfigure/server.h>
 #include <masters/DynrecConfig.h>
+#include <image_transport/image_transport.h>
+
 
 
 /* some STL includes */
@@ -149,9 +151,16 @@ namespace masters {
         double m_mean;
         double m_stddev;
         double m_correction_th;
+        double m_time_th;
         double m_dt;
         int m_history_buf_size;
         ros::Time m_t0;
+
+//
+        double m_drone_h;
+        double m_drone_w;
+
+        std::string m_image_transport_hint;
 
         /* ros parameters */
 //        std::string m_uav_name;
@@ -221,7 +230,7 @@ namespace masters {
 
         ros::Subscriber m_sub_detection;
         ros::Subscriber m_sub_main_camera_detection;
-        ros::Subscriber m_sub_main_camera;
+        image_transport::Subscriber m_sub_main_camera;
 
         double m_line_variance = 0.0;
 
@@ -230,6 +239,9 @@ namespace masters {
         // | --------------------- other functions -------------------- |
 
         std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
+
+        std::optional<std::tuple<cv::Point2d, double, double>>
+        m_detect_uav_with_bbox(const sensor_msgs::Image::ConstPtr &msg);
 
         dkf_t m_dkf = dkf_t();
         dkf_t::statecov_t m_state_vec;

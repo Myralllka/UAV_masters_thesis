@@ -20,7 +20,7 @@
     <depend>geometry_msgs</depend>
     <depend>visualization_msgs</depend>
     <depend>image_geometry</depend>
-    <depend>lidar_tracker</depend>
+<!--    <depend>lidar_tracker</depend>-->
 
     <export>
         <!-- The plugins.xml file defines nodelet as a plugin -->
