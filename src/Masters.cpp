@@ -41,9 +41,7 @@ namespace masters {
         pl.loadParam("target_gt_odometry", m_name_target_odom_msg);
         pl.loadParam("time_th", m_time_th);
         pl.loadParam("correction_th", m_correction_th);
-        if (m_is_real_world) {
-            pl.loadParam("lidar_tracker", m_name_lidar_tracker);
-        }
+        pl.loadParam("lidar_tracker", m_name_lidar_tracker);
 
         if (!pl.loadedSuccessfully()) {
             ROS_ERROR("[%s]: failed to load non-optional parameters!", m_nodename.c_str());
@@ -107,8 +105,10 @@ namespace masters {
         ROS_INFO("[%s]: approach used: %s", m_nodename.c_str(), m_approach.c_str());
         if (m_approach == "dkf") {
             m_sub_detection = nh.subscribe("detection", 1, &Masters::m_cbk_detection, this);
+            ROS_INFO("[%s]: subscribing to %s", m_nodename.c_str(), "detection");
             m_sub_main_camera = it.subscribe(m_name_main_camera + "/image_raw", 1,
                                              &Masters::m_cbk_main_camera, this, hint);
+            ROS_INFO("[%s]: subscribing to %s", m_nodename.c_str(), (m_name_main_camera + "/image_raw").c_str());
         } else if (m_approach == "plkf") {
             m_sub_detection = nh.subscribe("detection", 1, &Masters::m_cbk_detection, this);
             m_sub_main_camera = it.subscribe(m_name_main_camera + "/image_raw", 1,
@@ -132,8 +132,8 @@ namespace masters {
         // Some additional inits
 //        https://www.mdpi.com/2072-4292/13/15/2915
 
-        ROS_INFO_ONCE("[%s]: initialized", m_nodename.c_str());
         m_is_initialized = true;
+        ROS_INFO_ONCE("[%s]: initialized", m_nodename.c_str());
     }
 //}
 
@@ -157,6 +157,7 @@ namespace masters {
 // | ---------------------- msg callbacks --------------------- |
 
     [[maybe_unused]] void Masters::m_cbk_detection(const geometry_msgs::PointStamped &msg) {
+        if (not m_is_initialized) return;
 
         // find the eagle pose
         auto pt_rect = m_camera_main.rectifyPoint({msg.point.x, msg.point.y});
@@ -181,7 +182,9 @@ namespace masters {
 
     [[maybe_unused]] void Masters::m_cbk_main_camera(const sensor_msgs::ImageConstPtr &msg) {
         if (not m_is_initialized) return;
+        ROS_INFO("[%s]: main camera cbk started", m_nodename.c_str());
         const auto detection_opt = m_detect_uav(msg);
+        ROS_INFO("[%s]: uav detected", m_nodename.c_str());
 //        const auto detection_opt_lr = m_detect_uav_with_bbox(msg);
 
         m_name_main_camera_tf = msg->header.frame_id;
@@ -404,6 +407,7 @@ namespace masters {
                         x_k[4] = vel.y() - state_interceptor_new[4];
                         x_k[5] = vel.z() - state_interceptor_new[5];
                     }
+                    std::cout << x_k << std::endl;
                     m_state_vec.x = x_k;
                     m_state_vec.P = m_P0;
                 } else {
@@ -664,6 +668,7 @@ namespace masters {
     }
 
     std::optional<cv::Point2d> Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
+        ROS_INFO_THROTTLE(1.0, "[%s]: detection started", m_nodename.c_str());
         const auto msg_target_odom = m_subh_target_odom.getMsg();
         const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
         const auto ps_tgt = msg_target_odom->pose.pose.position;
@@ -677,6 +682,7 @@ namespace masters {
                                                                        {ps_eagle.x, ps_eagle.y, ps_eagle.z},
                                                                        m_name_world_origin,
                                                                        msg->header.stamp);
+        ROS_INFO_THROTTLE(1.0, "[%s]: all transforms done", m_nodename.c_str());
 
         Eigen::Vector3d dir_vec, dir_vec_tmp;
         if (new_pose_eagle_opt.has_value()) {
@@ -686,8 +692,6 @@ namespace masters {
                 const auto pos_tgt_auto = new_pose_st_opt.value();
                 pos_tgt = Eigen::Vector3d{pos_tgt_auto.x(), pos_tgt_auto.y(), pos_tgt_auto.z()};
             }
-            std::cout << pos_tgt << std::endl;
-            std::cout << pos_eagle << std::endl;
             visualise_arrow(pos_eagle, pos_tgt, msg->header.stamp);
 //  state for the PLKF is the relative pos and vel of a target with respect to the interceptor
             dir_vec_tmp = pos_tgt - pos_eagle;
@@ -698,17 +702,16 @@ namespace masters {
             if (new_dirvec.has_value()) {
                 dir_vec = new_dirvec.value();
             } else {
-                std::cout << "FUCK IT ALL" << std::endl;
+                ROS_ERROR("[%s]: unexpected error: no direction vector", m_nodename.c_str());
             }
-            std::cout << dir_vec << std::endl;
         } else {
             ROS_ERROR("[%s]: pose transformation for detection init has no value", m_nodename.c_str());
             return std::nullopt;
         }
-//        if (dir_vec.z() < 0) {
-//            ROS_ERROR("[%s]: pose is behind the image plane", m_nodename.c_str());
-//            return std::nullopt;
-//        }
+        if (dir_vec.z() < 0) {
+            ROS_ERROR("[%s]: pose is behind the image plane", m_nodename.c_str());
+            return std::nullopt;
+        }
         const auto pt_ideal = m_camera_main.project3dToPixel(cv::Point3d(dir_vec.x(), dir_vec.y(), dir_vec.z()));
         std::random_device rseed;
         std::mt19937 rng(rseed());
@@ -716,11 +719,10 @@ namespace masters {
         double e_x = dist(rng), e_y = dist(rng);
 
         const cv::Point2d pt_noisy{pt_ideal.x + e_x, pt_ideal.y + e_y};
-//        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_main.cameraInfo().width or
-//            pt_noisy.y < 0 or pt_noisy.y > m_camera_main.cameraInfo().height) {
-//            return std::nullopt;
-//        }
-        std::cout << pt_noisy << std::endl;
+        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_main.cameraInfo().width or
+            pt_noisy.y < 0 or pt_noisy.y > m_camera_main.cameraInfo().height) {
+            return std::nullopt;
+        }
         // visualize detection
         cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
         cv::circle(image, pt_noisy, 20, cv::Scalar(255, 0, 0), 2);

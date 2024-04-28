@@ -2,6 +2,7 @@
 
   <!-- defines name of the namespace of the drone -->
   <arg name="UAV_NAME" default="$(env UAV_NAME)" />
+  <arg name="TGT_NAME" default="$(env TGT_NAME)" />
   <arg name="RUN_TYPE" default="$(env RUN_TYPE)" />
 
   <!-- set to false if the nodelet should run under an external nodelet manager -->
@@ -24,7 +25,7 @@
 
   <!-- Namespace - all topics and parameters will be remapped using this namespace as a prefix (eg.: "/vision_example/image_in" to "/uav1/vision_example/image_in") -->
   <group ns="$(arg UAV_NAME)">
-    <node pkg="tf" type="static_transform_publisher" name="rtk_connector" args="0 0 0 0 0 0 1 uav27/rtk_origin uav28/rtk_origin 100" />
+<!--     <node pkg="tf" type="static_transform_publisher" name="rtk_connector" args="0 0 0 0 0 0 1 $(arg UAV_NAME)/rtk_origin $(arg TGT_NAME)/rtk_origin 100" /> -->
 
 
     <!-- Masters nodelet -->
@@ -37,29 +38,31 @@
       <param name="world_origin" type="string" value="$(arg UAV_NAME)/world_origin"/>
 
       <param name="eagle_name" type="string" value="$(arg UAV_NAME)"/>
-      <param name="target_name" type="string" value="uav2"/>
+      <param name="target_name" type="string" value="$(arg TGT_NAME)"/>
 
+<!--  was never really used -->
+      <param name="lidar_tracker" type="string" value="/$(arg UAV_NAME)/lidar_tracker/tracks"/>
 <!--  For the rosbags recorded before -->
-<!--       <param name="eagle_gt_odometry" type="string" value="/$(arg UAV_NAME)/estimation_manager/ground_truth/odom"/> -->
-<!--       <param name="target_gt_odometry" type="string" value="/uav2/estimation_manager/ground_truth/odom"/> -->
-<!--       <param name="main_camera" type="string" value="/$(arg UAV_NAME)/bluefox_down"/> -->
+      <param name="eagle_gt_odometry" type="string" value="/$(arg UAV_NAME)/estimation_manager/ground_truth/odom"/>
+      <param name="target_gt_odometry" type="string" value="/$(arg TGT_NAME)/estimation_manager/ground_truth/odom"/>
+      <param name="main_camera" type="string" value="/$(arg UAV_NAME)/bluefox_front"/>
 
 <!--  For the simulation -->
 <!--       <param name="eagle_gt_odometry" type="string" value="/$(arg UAV_NAME)/estimation_manager/ground_truth/odom"/> -->
 <!--       <param name="target_gt_odometry" type="string" value="/uav2/estimation_manager/ground_truth/odom"/> -->
 <!--       <param name="main_camera" type="string" value="/$(arg UAV_NAME)/rgbd_front/color"/> -->
 
-<!--  For the provided rosbag and real world (I guess) -->
+<!--  For the rosbag from the camp (NO lidar) -->
+<!--       <param name="eagle_gt_odometry" type="string" value="/$(arg UAV_NAME)/estimation_manager/rtk/odom"/> -->
+<!--       <param name="target_gt_odometry" type="string" value="/$(arg TGT_NAME)/estimation_manager/odom_main"/> -->
+<!--       <param name="target_tf_name" type="string" value="/$(arg TGT_NAME)/estimation_manager/odom_main"/> -->
+<!--       <param name="main_camera" type="string" value="/$(arg UAV_NAME)/up_rgbd/color/"/> -->
+
+<!-- NEVER USED For the provided rosbag and real world (I guess) -->
 <!--       <param name="lidar_tracker" type="string" value="/$(arg UAV_NAME)/lidar_tracker/tracks"/> -->
 <!--       <param name="eagle_gt_odometry" type="string" value="/$(arg UAV_NAME)/estimation_manager/ground_truth/odom"/> -->
 <!--       <param name="target_gt_odometry" type="string" value="/uav2/estimation_manager/ground_truth/odom"/> -->
 <!--       <param name="main_camera" type="string" value="/$(arg UAV_NAME)/rgbd_pitched/color"/> -->
-
-<!--  For the rosbag from the camp (NO lidar) -->
-      <param name="eagle_gt_odometry" type="string" value="/uav27/estimation_manager/rtk/odom"/>
-      <param name="target_gt_odometry" type="string" value="/uav28/estimation_manager/odom_main"/>
-      <param name="target_tf_name" type="string" value="/uav28/estimation_manager/odom_main"/>
-      <param name="main_camera" type="string" value="/uav27/up_rgbd/color/"/>
 
 
       <!-- ROS parameters config file -->
