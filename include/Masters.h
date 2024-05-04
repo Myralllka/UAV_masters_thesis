@@ -109,21 +109,23 @@ namespace masters {
                     const double line_variance) const {
             assert(line_direction.norm() > 0.0);
 
-            using M_t = Eigen::Matrix<double, 3, n>;
-            using W_t = Eigen::Matrix<double, 3, 1>;
-            using N_t = Eigen::Matrix<double, 3, 2>;
-            using o_t = Eigen::Matrix<double, 3, 1>;
-            using R_t_l = Eigen::Matrix<double, 2, 2>;
-
-            const M_t M = M_t::Identity();
-            const W_t W = line_direction;
-            const o_t o = line_origin;
-
-            const mat3_t rot = mrs_lib::geometry::rotationBetween(W_t::UnitX(), W);
-            const N_t N = rot.block<3, 2>(0, 1);
-            const z_t z = N.transpose() * o;
-            const H_t H = N.transpose() * M;
-            const R_t_l R = line_variance * N.transpose() * N;
+            std::cout << "======================" << std::endl;
+            // rotation between the (1, 0, 0) and line_direction
+            const mat3_t rot = mrs_lib::geometry::rotationBetween(Eigen::Matrix<double, 3, 1>::UnitX(), line_direction);
+            std::cout << rot << std::endl;
+            std::cout << "----------------------" << std::endl;
+            const Eigen::Matrix<double, 3, 2> N = rot.block<3, 2>(0, 1);
+            std::cout << N << std::endl;
+            std::cout << "----------------------" << std::endl;
+            const z_t z = N.transpose() * line_origin;
+            std::cout << z << std::endl;
+            std::cout << "----------------------" << std::endl;
+            const H_t H = N.transpose() * Eigen::Matrix<double, 3, n>::Identity();
+            std::cout << H << std::endl;
+            std::cout << "----------------------" << std::endl;
+            const Eigen::Matrix<double, 2, 2> R = line_variance * N.transpose() * N;
+            std::cout << R << std::endl;
+            std::cout << "end" << std::endl;
 
             return this->correction_impl(sc, z, R, H);
         };
@@ -174,6 +176,7 @@ namespace masters {
         std::string m_name_target_odom_msg;
         std::string m_name_lidar_tracker;
         std::string m_approach;
+        std::string m_eagle_frame_name;
         const std::string m_nodename = "Masters";
 
         /* other parameters */
@@ -248,17 +251,20 @@ namespace masters {
 
         void visualise_odometry(const Eigen::Matrix<double, 6, 1> state,
                                 const Eigen::Matrix<double, 6, 6> covariance,
-                                const ros::Time &t);
+                                const ros::Time &t,
+                                const std::string &frame);
 
         void visualise_arrow(const Eigen::Vector3d &start,
                              const Eigen::Vector3d &end,
-                             const ros::Time &detection_time);
+                             const ros::Time &detection_time,
+                             const std::string &frame);
 
-        void visualise_sphere(const Eigen::Vector3d &pos, const ros::Time &t);
+        void visualise_sphere(const Eigen::Vector3d &pos, const ros::Time &t, const std::string &frame);
 
         void postproc(const Eigen::Matrix<double, 6, 1> state,
                       const Eigen::Matrix<double, 6, 6> covariance,
-                      const ros::Time &t);
+                      const ros::Time &t,
+                      const std::string &frame);
 
         std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
         plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,
@@ -268,9 +274,8 @@ namespace masters {
                      const double &dt);
 
         std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
-        plkf_correct(const Eigen::Matrix<double, 6, 1> &xk_,
-                     const Eigen::Matrix<double, 6, 6> &Pk_,
-                     const Eigen::Vector3d &lmb);
+        plkf_correct(const Eigen::Matrix<double, 6, 1> &xk_, const Eigen::Matrix<double, 6, 6> &Pk_,
+                     const Eigen::Vector3d &o, const Eigen::Vector3d &lmb);
 
         // https://gist.github.com/javidcf/25066cf85e71105d57b6
         template<class MatT>
@@ -292,6 +297,24 @@ namespace masters {
                 }
             }
             return svd.matrixV() * singularValuesInv * svd.matrixU().adjoint();
+        }
+
+        template<class MatT>
+        Eigen::Matrix<typename MatT::Scalar, MatT::ColsAtCompileTime, MatT::RowsAtCompileTime>
+        invert_mat(MatT W) {
+            Eigen::ColPivHouseholderQR<MatT> qr(W);
+            if (!qr.isInvertible()) {
+                // add some stuff to the tmp matrix diagonal to make it invertible
+                MatT ident = MatT::Identity(W.rows(), W.cols());
+                W += 1e-9 * ident;
+                qr.compute(W);
+                if (!qr.isInvertible()) {
+                    // never managed to make this happen except for explicitly putting NaNs in the input
+                    std::cerr << "VERY BAD ERROR; NANS IN INVERS" << std::endl;
+                }
+            }
+            const MatT W_inv = qr.inverse();
+            return W_inv;
         }
 
         [[maybe_unused]] static vec3 m_find_intersection_svd_static_obj(const t_hist_vv &data);

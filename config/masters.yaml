@@ -1,6 +1,6 @@
 dt_kalman: 0.5 # [s]
 mean: 0.0 # [s]
-deviation: 1 # [px}
+deviation: 2 # [px}
 correction_th: 0.1 # [m]
 time_th: 5 # [s], after how meny seconds the reinitialisation should be done
 history_size: 9
