@@ -49,7 +49,7 @@
 
 <!--  For the simulation -->
 <!--       <param name="eagle_gt_odometry" type="string" value="/$(arg UAV_NAME)/estimation_manager/ground_truth/odom"/> -->
-<!--       <param name="target_gt_odometry" type="string" value="/uav2/estimation_manager/ground_truth/odom"/> -->
+<!--       <param name="target_gt_odometry" type="string" value="/$(arg TGT_NAME)/estimation_manager/ground_truth/odom"/> -->
 <!--       <param name="main_camera" type="string" value="/$(arg UAV_NAME)/rgbd_front/color"/> -->
 
 <!--  For the rosbag from the camp (NO lidar) -->

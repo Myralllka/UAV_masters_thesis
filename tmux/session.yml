@@ -15,7 +15,7 @@ windows:
   - gazebo:
       layout: tiled
       panes:
-      #  - waitForRos; roslaunch mrs_uav_gazebo_simulation simulation.launch world_file:="$EAGLE_GR_DIR/worlds/cisarsky_ostrov.world" gui:=false
+#        - waitForRos; roslaunch mrs_uav_gazebo_simulation simulation.launch world_file:="$EAGLE_GR_DIR/worlds/cisarsky_ostrov.world" gui:=true spawner_config:=./config/spawner.yaml
         - waitForRos; roslaunch mrs_uav_gazebo_simulation simulation.launch world_file:="$MRS_GR_DIR/worlds/grass_plane.world" gui:=false spawner_config:=./config/spawner.yaml
   - rviz:
       layout: tiled

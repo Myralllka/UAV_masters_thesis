@@ -1,7 +1,7 @@
-dt_kalman: 0.5 # [s]
+dt_kalman: 0.1 # [s]
 mean: 0.0 # [s]
 deviation: 2 # [px}
-correction_th: 0.1 # [m]
+correction_th: 0.01 # [m]
 time_th: 5 # [s], after how meny seconds the reinitialisation should be done
 history_size: 9
 
@@ -13,6 +13,6 @@ real_world: False
 # https://docs.ros.org/en/api/image_transport/html/classimage__transport_1_1TransportHints.html
 imhint: raw
 
-# svd_static, svd_dynamic, plkf, dkf
+# svd_static, svd_dynamic, plkf, dkf, plkft
 #approach: dkf
-approach: plkf
+approach: plkft

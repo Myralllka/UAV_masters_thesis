@@ -22,6 +22,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <random>
+#include <algorithm>
 
 /* custom helper functions from our library */
 #include <mrs_lib/param_loader.h>
@@ -109,23 +110,12 @@ namespace masters {
                     const double line_variance) const {
             assert(line_direction.norm() > 0.0);
 
-            std::cout << "======================" << std::endl;
             // rotation between the (1, 0, 0) and line_direction
             const mat3_t rot = mrs_lib::geometry::rotationBetween(Eigen::Matrix<double, 3, 1>::UnitX(), line_direction);
-            std::cout << rot << std::endl;
-            std::cout << "----------------------" << std::endl;
             const Eigen::Matrix<double, 3, 2> N = rot.block<3, 2>(0, 1);
-            std::cout << N << std::endl;
-            std::cout << "----------------------" << std::endl;
             const z_t z = N.transpose() * line_origin;
-            std::cout << z << std::endl;
-            std::cout << "----------------------" << std::endl;
             const H_t H = N.transpose() * Eigen::Matrix<double, 3, n>::Identity();
-            std::cout << H << std::endl;
-            std::cout << "----------------------" << std::endl;
             const Eigen::Matrix<double, 2, 2> R = line_variance * N.transpose() * N;
-            std::cout << R << std::endl;
-            std::cout << "end" << std::endl;
 
             return this->correction_impl(sc, z, R, H);
         };
@@ -159,8 +149,8 @@ namespace masters {
         ros::Time m_t0;
 
 //
-        double m_drone_h;
-        double m_drone_w;
+        double m_tgt_h;
+        double m_tgt_w;
 
         std::string m_image_transport_hint;
 
@@ -215,7 +205,7 @@ namespace masters {
 
 
         // | --------------------- timer callbacks -------------------- |
-        void update_kalman(Eigen::Vector3d detection_vec, ros::Time detection_time);
+        void update_kalman(Eigen::Vector3d detection_vec, double subtended_angle, ros::Time detection_time);
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
@@ -241,13 +231,14 @@ namespace masters {
 
         // | --------------------- other functions -------------------- |
 
-        std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
+        std::optional<std::pair<cv::Point2d, double>> m_detect_uav_with_angle(const sensor_msgs::Image::ConstPtr &msg);
 
-        std::optional<std::tuple<cv::Point2d, double, double>>
-        m_detect_uav_with_bbox(const sensor_msgs::Image::ConstPtr &msg);
+        std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
 
         dkf_t m_dkf = dkf_t();
         dkf_t::statecov_t m_state_vec;
+        Eigen::Matrix<double, 7, 1> m_state_vec_t_x;
+        Eigen::Matrix<double, 7, 7> m_state_vec_t_P;
 
         void visualise_odometry(const Eigen::Matrix<double, 6, 1> state,
                                 const Eigen::Matrix<double, 6, 6> covariance,
@@ -276,6 +267,19 @@ namespace masters {
         std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
         plkf_correct(const Eigen::Matrix<double, 6, 1> &xk_, const Eigen::Matrix<double, 6, 6> &Pk_,
                      const Eigen::Vector3d &o, const Eigen::Vector3d &lmb);
+
+
+        std::tuple<Eigen::Matrix<double, 7, 1>, Eigen::Matrix<double, 7, 7>>
+        plkf_pt_predict(const Eigen::Matrix<double, 7, 1> &xk_1,
+                        const Eigen::Matrix<double, 7, 7> &Pk_1,
+                        const double &dt);
+
+        std::tuple<Eigen::Matrix<double, 7, 1>, Eigen::Matrix<double, 7, 7>>
+        plkf_pt_correct(const Eigen::Matrix<double, 7, 1> &xk_,
+                        const Eigen::Matrix<double, 7, 7> &Pk_,
+                        const Eigen::Vector3d &o,
+                        const double theta,
+                        const Eigen::Vector3d &lmb);
 
         // https://gist.github.com/javidcf/25066cf85e71105d57b6
         template<class MatT>
