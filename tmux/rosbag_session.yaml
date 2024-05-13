@@ -19,7 +19,7 @@ windows:
   - rosbag:
       layout: tiled
       panes:
-        - waitForRos; rosparam set use_sim_time true; rosbag play $ROSBAG_PATH --clock
+        - waitForRos; sleep 3; rosparam set use_sim_time true; rosbag play $ROSBAG_PATH --clock
   - rviz:
       layout: tiled
       panes:

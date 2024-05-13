@@ -1,9 +1,11 @@
 dt_kalman: 0.1 # [s]
 mean: 0.0 # [s]
-deviation: 2 # [px}
-correction_th: 0.01 # [m]
+deviation: 0 # [px}
+correction_th: 1 # [m]
 time_th: 5 # [s], after how meny seconds the reinitialisation should be done
 history_size: 9
+angle_variance: 0.001 # [rad]
+object_size_variance: 0.00001
 
 approx_drone_size_for_bbox_height: 0.2 # [m] size of the drone from the center to the top/bottom
 approx_drone_size_for_bbox_width: 0.2 # [m] size of the drone from the center diagonally
@@ -13,6 +15,6 @@ real_world: False
 # https://docs.ros.org/en/api/image_transport/html/classimage__transport_1_1TransportHints.html
 imhint: raw
 
-# svd_static, svd_dynamic, plkf, dkf, plkft
+# svd_static, svd_dynamic, plkf, dkf, plkft, dkft
 #approach: dkf
-approach: plkft
+approach: plkf

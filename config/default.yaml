@@ -5,12 +5,21 @@ world_point:
   y: 0.0
   z: 0.0
 
-s_Q_acc: 0.01
+# for plkf and plkft
+s_Q_acc: 1
 #s_Q_vel: 0.001
-s_R: 0.01
-s_P0_position: 0.0001
-s_P0_velocity: 0.00000001
+s_R: 0.001
+s_P0_position: 0.001
+s_P0_velocity: 0.01
 dkf_var: 0.05
+
+# for dkf
+#s_Q_acc: 0.00001
+##s_Q_vel: 0.001
+#s_R: 0.11
+#s_P0_position: 0.001
+#s_P0_velocity: 0.0001
+#dkf_var: 0.05
 
 rate:
   # how often to publish my topic?

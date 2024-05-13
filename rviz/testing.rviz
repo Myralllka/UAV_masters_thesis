@@ -79,25 +79,27 @@ Visualization Manager:
           Value: true
         odom_ned:
           Value: true
-        uav2/amsl_origin:
-          Value: true
         uav2/fcu:
           Value: true
         uav2/fcu_untilted:
-          Value: true
-        uav2/fixed_origin:
           Value: true
         uav2/garmin:
           Value: true
         uav2/garmin_agl_origin:
           Value: true
+        uav2/gps_baro_local_origin:
+          Value: true
         uav2/gps_baro_origin:
           Value: true
         uav2/gps_baro_origin_att_only:
           Value: true
+        uav2/gps_garmin_local_origin:
+          Value: true
         uav2/gps_garmin_origin:
           Value: true
         uav2/gps_garmin_origin_att_only:
+          Value: true
+        uav2/ground_truth_local_origin:
           Value: true
         uav2/ground_truth_origin:
           Value: true
@@ -105,75 +107,45 @@ Visualization Manager:
           Value: true
         uav2/rtk_antenna:
           Value: true
-        uav2/stable_origin:
-          Value: true
         uav2/utm_origin:
           Value: true
         uav2/world_origin:
           Value: true
-        uav91/amsl_origin:
+        uav91/bluefox_down:
+          Value: true
+        uav91/bluefox_down_optical:
+          Value: true
+        uav91/bluefox_front:
+          Value: true
+        uav91/bluefox_front_optical:
           Value: true
         uav91/fcu:
           Value: true
         uav91/fcu_untilted:
           Value: true
-        uav91/fixed_origin:
-          Value: true
         uav91/garmin:
           Value: true
         uav91/garmin_agl_origin:
+          Value: true
+        uav91/gps_baro_local_origin:
           Value: true
         uav91/gps_baro_origin:
           Value: true
         uav91/gps_baro_origin_att_only:
           Value: true
+        uav91/gps_garmin_local_origin:
+          Value: true
         uav91/gps_garmin_origin:
           Value: true
         uav91/gps_garmin_origin_att_only:
+          Value: true
+        uav91/ground_truth_local_origin:
           Value: true
         uav91/ground_truth_origin:
           Value: true
         uav91/local_origin:
           Value: true
-        uav91/rgbd_down/aligned_depth_to_color:
-          Value: true
-        uav91/rgbd_down/aligned_depth_to_color_optical:
-          Value: true
-        uav91/rgbd_down/color:
-          Value: true
-        uav91/rgbd_down/color_optical:
-          Value: true
-        uav91/rgbd_down/infra1:
-          Value: true
-        uav91/rgbd_down/infra1_optical:
-          Value: true
-        uav91/rgbd_down/infra2:
-          Value: true
-        uav91/rgbd_down/infra2_optical:
-          Value: true
-        uav91/rgbd_down/link:
-          Value: true
-        uav91/rgbd_front/aligned_depth_to_color:
-          Value: true
-        uav91/rgbd_front/aligned_depth_to_color_optical:
-          Value: true
-        uav91/rgbd_front/color:
-          Value: true
-        uav91/rgbd_front/color_optical:
-          Value: true
-        uav91/rgbd_front/infra1:
-          Value: true
-        uav91/rgbd_front/infra1_optical:
-          Value: true
-        uav91/rgbd_front/infra2:
-          Value: true
-        uav91/rgbd_front/infra2_optical:
-          Value: true
-        uav91/rgbd_front/link:
-          Value: true
         uav91/rtk_antenna:
-          Value: true
-        uav91/stable_origin:
           Value: true
         uav91/utm_origin:
           Value: true
@@ -192,83 +164,59 @@ Visualization Manager:
         common_origin:
           uav2/fcu:
             uav2/fcu_untilted:
-              uav2/amsl_origin:
-                {}
               uav2/garmin_agl_origin:
-                {}
-            uav2/fixed_origin:
-              uav2/local_origin:
                 {}
             uav2/garmin:
               {}
             uav2/gps_baro_origin:
-              {}
+              uav2/gps_baro_local_origin:
+                {}
             uav2/gps_baro_origin_att_only:
               {}
             uav2/gps_garmin_origin:
-              {}
+              uav2/gps_garmin_local_origin:
+                {}
             uav2/gps_garmin_origin_att_only:
               {}
             uav2/ground_truth_origin:
+              uav2/ground_truth_local_origin:
+                {}
+            uav2/local_origin:
               {}
             uav2/rtk_antenna:
-              {}
-            uav2/stable_origin:
               {}
             uav2/utm_origin:
               {}
             uav2/world_origin:
               {}
           uav91/fcu:
+            uav91/bluefox_down:
+              uav91/bluefox_down_optical:
+                {}
+            uav91/bluefox_front:
+              uav91/bluefox_front_optical:
+                {}
             uav91/fcu_untilted:
-              uav91/amsl_origin:
-                {}
               uav91/garmin_agl_origin:
-                {}
-            uav91/fixed_origin:
-              uav91/local_origin:
                 {}
             uav91/garmin:
               {}
             uav91/gps_baro_origin:
-              {}
+              uav91/gps_baro_local_origin:
+                {}
             uav91/gps_baro_origin_att_only:
               {}
             uav91/gps_garmin_origin:
-              {}
+              uav91/gps_garmin_local_origin:
+                {}
             uav91/gps_garmin_origin_att_only:
               {}
             uav91/ground_truth_origin:
+              uav91/ground_truth_local_origin:
+                {}
+            uav91/local_origin:
               {}
-            uav91/rgbd_down/link:
-              uav91/rgbd_down/aligned_depth_to_color:
-                uav91/rgbd_down/aligned_depth_to_color_optical:
-                  {}
-              uav91/rgbd_down/color:
-                uav91/rgbd_down/color_optical:
-                  {}
-              uav91/rgbd_down/infra1:
-                uav91/rgbd_down/infra1_optical:
-                  {}
-              uav91/rgbd_down/infra2:
-                uav91/rgbd_down/infra2_optical:
-                  {}
-            uav91/rgbd_front/link:
-              uav91/rgbd_front/aligned_depth_to_color:
-                uav91/rgbd_front/aligned_depth_to_color_optical:
-                  {}
-              uav91/rgbd_front/color:
-                uav91/rgbd_front/color_optical:
-                  {}
-              uav91/rgbd_front/infra1:
-                uav91/rgbd_front/infra1_optical:
-                  {}
-              uav91/rgbd_front/infra2:
-                uav91/rgbd_front/infra2_optical:
-                  {}
             uav91/rtk_antenna:
-              {}
-            uav91/stable_origin:
               {}
             uav91/utm_origin:
               {}
@@ -324,7 +272,7 @@ Visualization Manager:
       Value: true
     - Class: rviz/Image
       Enabled: true
-      Image Topic: /uav91/rgbd_down/color/image_raw
+      Image Topic: /uav91/masters/changed
       Max Value: 1
       Median window: 5
       Min Value: 0
@@ -364,7 +312,7 @@ Visualization Manager:
       Marker Topic: /uav91/control_manager/mpc_tracker/trajectory_processed/markers
       Name: MarkerArray
       Namespaces:
-        "": true
+        {}
       Queue Size: 100
       Value: true
     - Angle Tolerance: 0.10000000149011612
@@ -486,15 +434,14 @@ Visualization Manager:
       Marker Topic: /uav91/masters/detection_marker
       Name: Marker
       Namespaces:
-        my_namespace: true
-        my_namespace_detect: true
+        {}
       Queue Size: 100
       Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
     Default Light: true
-    Fixed Frame: uav2/local_origin
+    Fixed Frame: common_origin
     Frame Rate: 30
   Name: root
   Tools:
@@ -518,7 +465,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 51.39101791381836
+      Distance: 9.816056251525879
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -526,17 +473,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.7853981852531433
       Focal Point:
-        X: 0.3670738935470581
-        Y: 2.870821714401245
-        Z: 2.6107940673828125
+        X: 2.774296760559082
+        Y: -7.617213249206543
+        Z: 9.531622886657715
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.795204222202301
+      Pitch: 0.6552037596702576
       Target Frame: <Fixed Frame>
-      Yaw: 2.0062296390533447
+      Yaw: 4.739410400390625
     Saved: ~
 Window Geometry:
   Camera:

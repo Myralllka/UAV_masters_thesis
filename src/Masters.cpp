@@ -42,6 +42,8 @@ namespace masters {
         pl.loadParam("time_th", m_time_th);
         pl.loadParam("correction_th", m_correction_th);
         pl.loadParam("lidar_tracker", m_name_lidar_tracker);
+        pl.loadParam("angle_variance", m_angle_variance);
+        pl.loadParam("object_size_variance", m_obj_size_variance);
 
         if (!pl.loadedSuccessfully()) {
             ROS_ERROR("[%s]: failed to load non-optional parameters!", m_nodename.c_str());
@@ -95,22 +97,21 @@ namespace masters {
 
         // | --------------------- tf transformer --------------------- |
         m_transformer = mrs_lib::Transformer(nh, m_nodename, ros::Duration(1));
-        m_transformer.setLookupTimeout(ros::Duration(0.1));
+        m_transformer.setLookupTimeout(ros::Duration(1));
 
 
-        m_t0 = ros::Time::now();
         m_camera_main.fromCameraInfo(cam_info);
         image_transport::ImageTransport it(nh);
         const image_transport::TransportHints hint(m_image_transport_hint);
         ROS_INFO("[%s]: approach used: %s", m_nodename.c_str(), m_approach.c_str());
-        if (m_approach == "dkf" or m_approach == "plkf" or m_approach == "plkft") {
-            m_sub_detection = nh.subscribe("detection", 1, &Masters::m_cbk_detection, this);
+        if (m_approach == "dkf" or m_approach == "dkft" or m_approach == "plkf" or m_approach == "plkft") {
             m_sub_main_camera = it.subscribe(m_name_main_camera + "/image_raw", 1,
                                              &Masters::m_cbk_main_camera, this, hint);
+            m_sub_detection = nh.subscribe("detection", 1, &Masters::m_cbk_detection, this);
         } else if (m_approach == "svd_static" or m_approach == "svd_dynamic") {
-            m_sub_main_camera_detection = nh.subscribe("detection_svd", 1, &Masters::m_cbk_posearray_svd_pos_vel, this);
             m_sub_main_camera = it.subscribe(m_name_main_camera + "/image_raw", 1,
                                              &Masters::m_cbk_camera_image_to_detection_svd, this, hint);
+            m_sub_main_camera_detection = nh.subscribe("detection_svd", 1, &Masters::m_cbk_posearray_svd_pos_vel, this);
         } else {
             ROS_ERROR("[%s]: unknown m_aproach", m_nodename.c_str());
         }
@@ -135,7 +136,7 @@ namespace masters {
         m_state_vec.P = Eigen::Matrix<double, 6, 6>::Zero();
         m_state_vec.P.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_P0_position;
         m_state_vec.P.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * config.s_P0_velocity;
-        m_P0 = Eigen::Matrix<double, 6, 6>::Zero();
+        m_P0 = Eigen::Matrix<double, 6, 6>::Identity();
         m_P0.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_P0_position;
         m_P0.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * config.s_P0_velocity;
         m_line_variance = config.dkf_var;
@@ -144,6 +145,13 @@ namespace masters {
 // | ---------------------- msg callbacks --------------------- |
 
     [[maybe_unused]] void Masters::m_cbk_detection(const geometry_msgs::PointStamped &msg) {
+        std::unique_lock lk(m_mut_tgt_gt);
+        m_cv.wait(lk, [this] { return not m_gt_used; });
+        dkf_ang_t::statecov_t tgt_gt = m_tgt_gt;
+        dkf_ang_t::statecov_t eagle_gt = m_eagle_gt;
+        m_gt_used = true;
+        lk.unlock();
+
         if (not m_is_initialized) return;
         //instead of z in point there is a theta angle
 
@@ -159,7 +167,7 @@ namespace masters {
                 const Eigen::Vector3d detection_vec = Eigen::Vector3d{T_msg_frame2world_opt->x(),
                                                                       T_msg_frame2world_opt->y(),
                                                                       T_msg_frame2world_opt->z()}.normalized();
-                update_kalman(detection_vec, msg.point.z, msg.header.stamp);
+                update_kalman(detection_vec, msg.point.z, msg.header.stamp, tgt_gt, eagle_gt);
             }
         } else {
             ROS_ERROR_STREAM("[" << m_nodename << "]: ERROR no transformation from " << msg.header.frame_id << " to "
@@ -178,16 +186,25 @@ namespace masters {
 
         double theta;
         cv::Point2d detection;
+        dkf_ang_t::statecov_t tgt_gt;
+        dkf_ang_t::statecov_t eagle_gt;
 
         if (detection_opt.has_value()) {
-            std::tie(detection, theta) = detection_opt.value();
+            std::tie(detection, theta, tgt_gt, eagle_gt) = detection_opt.value();
 
             geometry_msgs::PointStamped det_ros_msg;
             det_ros_msg.header = msg->header;
             det_ros_msg.point.x = detection.x;
             det_ros_msg.point.y = detection.y;
             det_ros_msg.point.z = theta;
+            {
+                std::lock_guard lg(m_mut_tgt_gt);
+                m_tgt_gt = tgt_gt;
+                m_eagle_gt = eagle_gt;
+                m_gt_used = false;
+            }
             m_pub_detection.publish(det_ros_msg);
+            m_cv.notify_one();
         } else {
             ROS_ERROR_THROTTLE(1.0, "[%s]: No detection present;", m_nodename.c_str());
             return;
@@ -199,11 +216,14 @@ namespace masters {
         if (not m_is_initialized) return;
         ROS_INFO_THROTTLE(1.0, "[%s]: SVD detection start %s", m_nodename.c_str(), m_approach.c_str());
         const auto detection_opt = m_detect_uav_with_angle(msg);
+        m_name_main_camera_tf = msg->header.frame_id;
 
         double theta;
         cv::Point2d detection;
+        dkf_ang_t::statecov_t tgt_gt;
+        dkf_ang_t::statecov_t eagle_gt;
         if (detection_opt.has_value()) {
-            std::tie(detection, theta) = detection_opt.value();
+            std::tie(detection, theta, tgt_gt, eagle_gt) = detection_opt.value();
         } else {
             ROS_ERROR_THROTTLE(1.0, "[%s]: No detection present;", m_nodename.c_str());
             return;
@@ -219,31 +239,12 @@ namespace masters {
 
 
         geometry_msgs::Pose p1, p2;
-//        p1 is the interceptor in the world coordinate frame
-        if (m_subh_eagle_odom.hasMsg()) {
-            const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
-            const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_eagle_odom->header.frame_id,
-                                                                        {msg_eagle_odom->pose.pose.position.x,
-                                                                         msg_eagle_odom->pose.pose.position.y,
-                                                                         msg_eagle_odom->pose.pose.position.z},
-                                                                        m_name_world_origin,
-                                                                        msg_eagle_odom->header.stamp);
-            if (new_pose_st_opt.has_value()) {
-                p1.position.x = new_pose_st_opt->x();
-                p1.position.y = new_pose_st_opt->y();
-                p1.position.z = new_pose_st_opt->z();
-            } else {
-                ROS_ERROR("[%s]: pose or twist transformation has no value", m_nodename.c_str());
-                return;
-            }
-        } else {
-            ROS_ERROR("[%s]: No odometry msg from %s", m_nodename.c_str(), m_name_eagle_odom_msg.c_str());
-            return;
-        }
+        p1.position.x = eagle_gt.x.x();
+        p1.position.y = eagle_gt.x.y();
+        p1.position.z = eagle_gt.x.z();
         // transform to the static world frame
         cv::Point3d ray_to_detection_original = m_camera_main.projectPixelTo3dRay({ray_to_detection.x,
                                                                                    ray_to_detection.y});
-
         auto ray_opt = m_transformer.transformAsPoint(m_name_main_camera_tf,
                                                       vec3{ray_to_detection_original.x,
                                                            ray_to_detection_original.y,
@@ -268,11 +269,22 @@ namespace masters {
         res.header.frame_id = m_name_world_origin;
         res.poses.push_back(p1);
         res.poses.push_back(p2);
+        {
+            std::lock_guard lg(m_mut_tgt_gt);
+            m_tgt_gt = tgt_gt;
+            m_eagle_gt = eagle_gt;
+            m_gt_used = false;
+        }
         m_pub_detection_svd.publish(res);
+        m_cv.notify_one();
     }
 // | --------------------- timer callbacks -------------------- |
 
-    void Masters::update_kalman(Eigen::Vector3d detection_vec, double subtended_angle, ros::Time detection_time) {
+    void Masters::update_kalman(Eigen::Vector3d detection_vec,
+                                double subtended_angle,
+                                ros::Time detection_time,
+                                const dkf_ang_t::statecov_t &tgt_gt,
+                                const dkf_ang_t::statecov_t &eagle_gt) {
         if (not m_is_initialized) return;
         ROS_INFO_THROTTLE(5.0, "[%s]: kalman cbk start", m_nodename.c_str());
         if (m_last_kalman_time == ros::Time(0)) {
@@ -282,72 +294,59 @@ namespace masters {
         const double dt = (detection_time - m_last_kalman_time).toSec();
         m_last_kalman_time = detection_time;
 
-        dkf_t::A_t A = dkf_t::A_t::Identity();
-        Eigen::Matrix<double, 6, 3> B = Eigen::Matrix<double, 6, 3>::Identity();
-        A.block<3, 3>(0, 3) = dt * Eigen::Matrix3d::Identity();
-        B.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * dt * dt / 2;
-        B.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * dt;
-        m_dkf.A = A;
-
         // Compute the state of the interceptor
         Eigen::Matrix<double, 6, 1> state_interceptor_new;
-        if (m_subh_eagle_odom.hasMsg()) {
-            const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
-            const auto ps = msg_eagle_odom->pose.pose.position;
-            const auto tw = msg_eagle_odom->twist.twist.linear;
-            const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_eagle_odom->header.frame_id,
-                                                                        {ps.x, ps.y, ps.z},
-                                                                        m_name_world_origin,
-                                                                        msg_eagle_odom->header.stamp);
-            const auto new_twist_st_opt = m_transformer.transformAsVector(msg_eagle_odom->child_frame_id,
-                                                                          {tw.x, tw.y, tw.z},
-                                                                          m_name_world_origin,
-                                                                          msg_eagle_odom->header.stamp);
-            if (new_pose_st_opt.has_value() and new_twist_st_opt.has_value()) {
-                state_interceptor_new.segment<3>(0) = new_pose_st_opt.value();
-                state_interceptor_new.segment<3>(3) = new_twist_st_opt.value();
-            } else {
-                ROS_ERROR("[%s]: pose or twist transformation has no value", m_nodename.c_str());
-                return;
-            }
-        } else {
-            ROS_ERROR("[%s]: No odometry msg from %s", m_nodename.c_str(), m_name_eagle_odom_msg.c_str());
-            return;
-        }
+        const Eigen::Vector3d ps = eagle_gt.x.segment<3>(0);
+        const Eigen::Vector3d tw = eagle_gt.x.segment<3>(3);
+        state_interceptor_new.segment<3>(0) = ps;
+        state_interceptor_new.segment<3>(3) = tw;
+
 //        TODO handle track loss and do the re-initialisation
 //        if (m_is_kalman_initialized and dt <= m_time_th) {
         if (m_is_kalman_initialized) {
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman is initialised", m_nodename.c_str());
 
-            // Predict always
-            ROS_INFO_THROTTLE(5.0, "[%s]: kalman predict", m_nodename.c_str());
-            if (m_approach == "dkf") {
-                dkf_t::u_t u;
-                u.setZero();
-                Eigen::Matrix<double, 6, 6> Q = B * m_Q * B.transpose();
-                try {
-                    m_state_vec = m_dkf.predict(m_state_vec, u, Q, dt);
-                }
-                catch (const std::exception &e) {
-                    ROS_ERROR("DKF predict failed: %s", e.what());
-                }
-            } else if (m_approach == "plkf") {
-                std::tie(m_state_vec.x, m_state_vec.P) = plkf_predict(m_state_vec.x,
-                                                                      m_state_vec.P,
-                                                                      m_state_interceptor,
-                                                                      state_interceptor_new,
-                                                                      dt);
-            } else if (m_approach == "plkft") {
-                std::tie(m_state_vec_t_x, m_state_vec_t_P) = plkf_pt_predict(m_state_vec_t_x,
-                                                                             m_state_vec_t_P,
-                                                                             dt);
-                m_state_vec.x = m_state_vec_t_x.head(6);
-                m_state_vec.P = m_state_vec_t_P.block<6, 6>(0, 0);
-            }
-
-            // Correct based on the distance moved from the previous position
-            ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
             if ((state_interceptor_new.head(3) - m_position_last_correction).norm() >= m_correction_th) {
+                // Predict always when above th
+                ROS_INFO_THROTTLE(5.0, "[%s]: kalman predict", m_nodename.c_str());
+                if (m_approach == "dkf") {
+                    dkf_t::A_t A = dkf_t::A_t::Identity();
+                    Eigen::Matrix<double, 6, 3> B = Eigen::Matrix<double, 6, 3>::Identity();
+                    A.block<3, 3>(0, 3) = dt * Eigen::Matrix3d::Identity();
+                    B.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * dt * dt / 2;
+                    B.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * dt;
+                    m_dkf.A = A;
+
+                    dkf_t::u_t u;
+                    u.setZero();
+                    Eigen::Matrix<double, 6, 6> Q = B * m_Q * B.transpose();
+                    try {
+                        m_state_vec = m_dkf.predict(m_state_vec, u, Q, dt);
+                    }
+                    catch (const std::exception &e) {
+                        ROS_ERROR("DKF predict failed: %s", e.what());
+                    }
+                } else if (m_approach == "dkft") {
+                    m_state_vec_ang = dkf_pt_predict(m_state_vec_ang, dt);
+                    m_state_vec.x = m_state_vec_ang.x.head(6);
+                    m_state_vec.P = m_state_vec_ang.P.block<6, 6>(0, 0);
+                } else if (m_approach == "plkf") {
+                    std::tie(m_state_vec.x, m_state_vec.P) = plkf_predict(m_state_vec.x,
+                                                                          m_state_vec.P,
+                                                                          m_state_interceptor,
+                                                                          state_interceptor_new,
+                                                                          dt);
+                } else if (m_approach == "plkft") {
+                    std::tie(m_state_vec_ang.x, m_state_vec_ang.P) = plkf_pt_predict(m_state_vec_ang.x,
+                                                                                     m_state_vec_ang.P,
+                                                                                     dt);
+                    m_state_vec.x = m_state_vec_ang.x.head(6);
+                    m_state_vec.P = m_state_vec_ang.P.block<6, 6>(0, 0);
+                }
+
+                // Correct based on the distance moved from the previous position
+                ROS_INFO_THROTTLE(5.0, "[%s]: kalman correct", m_nodename.c_str());
+                m_position_last_correction = state_interceptor_new.head(3);
                 if (m_approach == "dkf") {
                     try {
                         m_state_vec = m_dkf.correctLine(m_state_vec,
@@ -358,37 +357,38 @@ namespace masters {
                     catch (const std::exception &e) {
                         ROS_ERROR("DKF correct failed: %s", e.what());
                     }
-                    m_position_last_correction = state_interceptor_new.head(3);
-
+                } else if (m_approach == "dkft") {
+                    m_state_vec_ang = dkf_pt_correct(m_state_vec_ang,
+                                                     state_interceptor_new.head(3),
+                                                     detection_vec,
+                                                     subtended_angle);
+                    m_state_vec.x = m_state_vec_ang.x.head(6);
+                    m_state_vec.P = m_state_vec_ang.P.block<6, 6>(0, 0);
                 } else if (m_approach == "plkf") {
                     std::tie(m_state_vec.x, m_state_vec.P) = plkf_correct(m_state_vec.x,
                                                                           m_state_vec.P,
                                                                           state_interceptor_new.head(3),
                                                                           detection_vec);
                 } else if (m_approach == "plkft") {
-                    std::tie(m_state_vec_t_x, m_state_vec_t_P) = plkf_pt_correct(m_state_vec_t_x,
-                                                                                 m_state_vec_t_P,
-                                                                                 state_interceptor_new.head(3),
-                                                                                 subtended_angle,
-                                                                                 detection_vec);
-                    m_state_vec.x = m_state_vec_t_x.head(6);
-                    m_state_vec.P = m_state_vec_t_P.block<6, 6>(0, 0);
+                    std::tie(m_state_vec_ang.x, m_state_vec_ang.P) = plkf_pt_correct(m_state_vec_ang.x,
+                                                                                     m_state_vec_ang.P,
+                                                                                     state_interceptor_new.head(3),
+                                                                                     subtended_angle,
+                                                                                     detection_vec);
+                    m_state_vec.x = m_state_vec_ang.x.head(6);
+                    m_state_vec.P = m_state_vec_ang.P.block<6, 6>(0, 0);
                 }
             }
         } else {
             // initialise
-            m_dkf = dkf_t(A, dkf_t::B_t::Zero());
+            m_dkf = dkf_t(dkf_t::A_t::Identity(), dkf_t::B_t::Zero());
+            m_dkf_ang = dkf_ang_t(dkf_ang_t::A_t::Identity(), dkf_ang_t::B_t::Zero());
             Eigen::Matrix<double, 6, 1> x_k;
             x_k.setZero();
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman initialise", m_nodename.c_str());
             if (not m_is_real_world and m_subh_target_odom.hasMsg()) {
-                const auto msg_target_odom = m_subh_target_odom.getMsg();
-                const auto ps = msg_target_odom->pose.pose.position;
-                const auto tw = msg_target_odom->twist.twist.linear;
-                const Eigen::Vector3d pos{ps.x, ps.y, ps.z};
-                const Eigen::Vector3d vel{tw.x, tw.y, tw.z};
-                x_k.head(3) = pos;
-                x_k.tail(3) = vel;
+                x_k.head(3) = tgt_gt.x.segment<3>(0);
+                x_k.tail(3) = tgt_gt.x.segment<3>(3);
                 m_state_vec.x = x_k;
                 m_state_vec.P = m_P0;
             } else if (m_is_real_world and m_subh_pcl_track.hasMsg()) {
@@ -420,23 +420,32 @@ namespace masters {
                           m_subh_pcl_track.subscribedTopicName().c_str());
                 return;
             }
-            if (m_approach == "plkft") {
-                m_state_vec_t_x.head(6) = m_state_vec.x;
-                m_state_vec_t_x(6) = 1;
-                m_state_vec_t_P.block<6, 6>(0, 0) = m_P0;
-                m_state_vec_t_P(6, 6) = 0.001;
+
+
+            if (m_approach == "plkft" or m_approach == "dkft") {
+                m_state_vec_ang.x.head(6) = m_state_vec.x;
+                m_state_vec_ang.x(6) = m_tgt_w * 2;
+                m_state_vec_ang.P.block<6, 6>(0, 0) = m_P0;
+                m_state_vec_ang.P(6, 6) = 0.000001;
             }
             ROS_INFO("[%s]: kalman is initialised", m_nodename.c_str());
             m_is_kalman_initialized = true;
         }
 
-        const Eigen::Matrix<double, 6, 1> m_x_k = m_state_vec.x;
-        const Eigen::Matrix<double, 6, 6> m_P_k = m_state_vec.P;
+        Eigen::Matrix<double, 6, 1> m_x_k;
+        Eigen::Matrix<double, 6, 6> m_P_k;
+        if (m_approach == "plkft" or m_approach == "dkft") {
+            m_x_k = m_state_vec_ang.x.head(6);
+            m_P_k = m_state_vec_ang.P.block<6, 6>(0, 0);
+        } else {
+            m_x_k = m_state_vec.x;
+            m_P_k = m_state_vec.P;
+        }
 
         visualise_arrow(state_interceptor_new.head(3),
                         state_interceptor_new.head(3) + detection_vec,
                         detection_time, m_name_world_origin);
-        postproc(m_x_k, m_P_k, detection_time, m_name_world_origin);
+        postproc(m_x_k, m_P_k, detection_time, m_name_world_origin, tgt_gt, eagle_gt);
 
         m_state_interceptor = state_interceptor_new;
     }
@@ -468,11 +477,13 @@ namespace masters {
         Eigen::Matrix<double, 3, 6> Hk;
         Hk.setZero();
         Hk.block<3, 3>(0, 0) = Plk;
-        const auto rk = xk_.head(3).norm();
-        const auto Vk = rk * Plk;
-        Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * m_R * Vk.transpose();
+//        it makes the uncertainty from ellipse to sphere...
+//        const auto rk = xk_.head(3).norm();
+//        const auto Vk = rk * Plk;
+//        Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + Vk * m_R * Vk.transpose();
+        Eigen::Matrix3d ps = Hk * Pk_ * Hk.transpose() + m_R;
         Eigen::Vector3d zk = Plk * o;
-        Eigen::Matrix3d pinv = Masters::invert_mat(ps);
+        Eigen::Matrix3d pinv = Masters::pseudoinverse(ps);
         Eigen::Matrix<double, 6, 3> K = Pk_ * Hk.transpose() * pinv;
         Eigen::Matrix<double, 6, 1> xk1 = xk_ + K * (zk - Hk * xk_);
         Eigen::Matrix<double, 6, 6> Pk1 = (Eigen::Matrix<double, 6, 6>::Identity() - K * Hk) * Pk_;
@@ -492,7 +503,7 @@ namespace masters {
         B.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * dt;
         Eigen::Matrix<double, 7, 7> sigma = Eigen::Matrix<double, 7, 7>::Identity();
         sigma.block<6, 6>(0, 0) = B * m_Q * B.transpose();
-        sigma(6, 6) = m_line_variance;
+        sigma(6, 6) = m_obj_size_variance;
         Eigen::Matrix<double, 7, 1> xk_ = A * xk_1;
         Eigen::Matrix<double, 7, 7> Pk_ = A * Pk_1 * A.transpose() + sigma;
         return {xk_, Pk_};
@@ -509,24 +520,23 @@ namespace masters {
 
         Hk.block<3, 3>(0, 0) = Plk;
         Hk.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * theta;
-        Hk.block<3, 1>(3, 6) = lmb;
-        std::cout << "---------------------------------------" << std::endl;
-        std::cout << Hk << std::endl;
-        std::cout << "=======================================" << std::endl;
+        Hk.block<3, 1>(3, 6) = -lmb;
         const auto rk = xk_.head(3).norm();
-        const auto Vk = rk * Plk;
 
         Eigen::Matrix<double, 6, 4> E = Eigen::Matrix<double, 6, 4>::Zero();
-        E.block<3, 3>(0, 0) = Vk;
-        auto r = xk_.head(3).norm();
-        E.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * theta * r;
+        E.block<3, 3>(0, 0) = rk * Plk;
+        E.block<3, 3>(3, 0) = rk * Eigen::Matrix3d::Identity() * theta;
         E.block<3, 1>(3, 3) = -lmb;
 
-        Eigen::Matrix<double, 4, 4> R = Eigen::Matrix<double, 4, 4>::Identity();
+//        Eigen::Matrix<double, 4, 4> R = Eigen::Matrix<double, 4, 4>::Identity();
+        Eigen::Matrix<double, 6, 6> R = Eigen::Matrix<double, 6, 6>::Identity();
         R.block<3, 3>(0, 0) = m_R;
-        R(3, 3) = 0.0001;
+        R(3, 3) = m_angle_variance;
+        R(4, 4) = m_angle_variance;
+        R(5, 5) = m_angle_variance;
 
-        Eigen::Matrix<double, 6, 6> ps = Hk * Pk_ * Hk.transpose() + E * R * E.transpose();
+//        Eigen::Matrix<double, 6, 6> ps = Hk * Pk_ * Hk.transpose() + E * R * E.transpose();
+        Eigen::Matrix<double, 6, 6> ps = Hk * Pk_ * Hk.transpose() + R;
         Eigen::Matrix<double, 6, 6> pinv = Masters::invert_mat(ps);
         Eigen::Matrix<double, 6, 1> zk;
         zk.head(3) = Plk * o;
@@ -538,7 +548,72 @@ namespace masters {
         return {xk1, Pk1};
     }
 
+    Masters::dkf_ang_t::statecov_t
+    Masters::dkf_pt_predict(const dkf_ang_t::statecov_t &sc, const double &dt) {
+        Eigen::Matrix<double, 7, 7> A = Eigen::Matrix<double, 7, 7>::Identity();
+        A.block<3, 3>(0, 3) = dt * Eigen::Matrix3d::Identity();
+
+        Eigen::Matrix<double, 6, 3> B = Eigen::Matrix<double, 6, 3>::Identity();
+        B.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * dt * dt / 2;
+        B.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * dt;
+        Eigen::Matrix<double, 7, 7> sigma = Eigen::Matrix<double, 7, 7>::Identity();
+        sigma.block<6, 6>(0, 0) = B * m_Q * B.transpose();
+        sigma(6, 6) = m_obj_size_variance;
+        dkf_ang_t::statecov_t ret;
+        ret.x = A * sc.x;
+        ret.P = A * sc.P * A.transpose() + sigma;
+        return ret;
+    }
+
+    Masters::dkf_ang_t::statecov_t
+    Masters::dkf_pt_correct(const dkf_ang_t::statecov_t &sc, const Eigen::Vector3d &line_origin,
+                            const Eigen::Vector3d &line_direction, const double &ang) {
+        assert(line_direction.norm() > 0.0);
+        // rotation between the (1, 0, 0) and line_direction
+        const Eigen::Matrix3d rot = mrs_lib::geometry::rotationBetween(Eigen::Matrix<double, 3, 1>::UnitX(),
+                                                                       line_direction);
+        const Eigen::Matrix<double, 3, 2> N = rot.block<3, 2>(0, 1);
+
+        const double theta = ang;
+        Eigen::Matrix<double, 5, 1> z = Eigen::Matrix<double, 5, 1>::Zero();
+        z.head(2) = N.transpose() * line_origin;
+        z.tail(3) = theta * line_origin;
+//        auto rk = sc.x.head(3).norm();
+        Eigen::Matrix<double, 5, 7> H = Eigen::Matrix<double, 5, 7>::Zero();
+        H.block<2, 3>(0, 0) = N.transpose();
+        H.block<3, 3>(2, 0) = Eigen::Matrix3d::Identity() * theta;
+        H.block<3, 1>(2, 6) = -line_direction;
+//        Eigen::Matrix<double, 5, 4> E = Eigen::Matrix<double, 5, 4>::Zero();
+//        E.block<2, 3>(0, 0) = N.transpose();
+//        E.block<3, 3>(2, 0) = rk * Eigen::Matrix3d::Identity() * theta;
+//        E.block<3, 1>(2, 3) = -rk * line_direction;
+//        Eigen::Matrix<double, 4, 4> temp = Eigen::Matrix4d::Identity() * m_line_variance;
+//        temp(3, 3) = m_angle_variance;
+//        const Eigen::Matrix<double, 5, 5> R = E * temp * E.transpose();
+        Eigen::Matrix<double, 5, 5> R = Eigen::Matrix<double, 5, 5>::Identity();
+        R.block<2, 2>(0, 0) = N.transpose() * N * m_line_variance;
+        R(2, 2) = m_angle_variance;
+        R(3, 3) = m_angle_variance;
+        R(4, 4) = m_angle_variance;
+        // the correction phase
+        dkf_ang_t::statecov_t ret;
+        const dkf_ang_t::R_t W = H * sc.P * H.transpose() + R;
+        const dkf_ang_t::R_t W_inv = invert_mat(W);
+        const dkf_ang_t::K_t K = sc.P * H.transpose() * W_inv;
+        auto inn = K * (z - (H * sc.x));
+        ret.x = sc.x + inn;
+        ret.P = (dkf_ang_t::P_t::Identity() - (K * H)) * sc.P;
+        return ret;
+    }
+
     [[maybe_unused]] void Masters::m_cbk_posearray_svd_pos_vel(const geometry_msgs::PoseArray &msg) {
+        std::unique_lock lk(m_mut_tgt_gt);
+        m_cv.wait(lk, [this] { return not m_gt_used; });
+        dkf_ang_t::statecov_t tgt_gt = m_tgt_gt;
+        dkf_ang_t::statecov_t eagle_gt = m_eagle_gt;
+        m_gt_used = true;
+        lk.unlock();
+
         ROS_INFO_THROTTLE(1.0, "[%s]: SVD start %s", m_nodename.c_str(), m_approach.c_str());
         vec3 pos_origin = vec3(msg.poses.at(0).position.x,
                                msg.poses.at(0).position.y,
@@ -581,12 +656,14 @@ namespace masters {
             m_history_linear.push_back(std::pair{pos_origin, pos_s});
             m_history_velocity.push_back(std::tuple{pos_origin, pos_s, msg.header.stamp});
         }
+        if (not m_t0.has_value()) {
+            m_t0 = msg.header.stamp;
+        }
         if (m_history_velocity.size() >= 4) {
-            ROS_INFO_THROTTLE(1.0, "[%s]: history size is more than 4", m_nodename.c_str());
+//            ROS_INFO_THROTTLE(1.0, "[%s]: history size is more than 4", m_nodename.c_str());
             vec3 position, velocity;
             if (m_approach == "svd_dynamic") {
                 std::tie(position, velocity) = m_find_intersection_svd_velocity_obj(m_history_velocity);
-                velocity = {0, 0, 0};
             } else if (m_approach == "svd_static") {
                 position = m_find_intersection_svd_static_obj(m_history_linear);
                 velocity = {0, 0, 0};
@@ -599,14 +676,15 @@ namespace masters {
             }
 
             const auto time_now = msg.header.stamp;
-            const double x = position.x() + velocity.x() * (time_now - m_t0).toSec();
-            const double y = position.y() + velocity.y() * (time_now - m_t0).toSec();
-            const double z = position.z() + velocity.z() * (time_now - m_t0).toSec();
+            const double x = position.x() + velocity.x() * (time_now - m_t0.value()).toSec();
+            const double y = position.y() + velocity.y() * (time_now - m_t0.value()).toSec();
+            const double z = position.z() + velocity.z() * (time_now - m_t0.value()).toSec();
             Eigen::Matrix<double, 6, 1> state;
             state << x, y, z, velocity.x(), velocity.y(), velocity.z();
+//            state << position.x(), position.y(), position.z(), velocity.x(), velocity.y(), velocity.z();
             postproc(state,
                      Eigen::Matrix<double, 6, 6>::Identity(),
-                     msg.header.stamp, m_name_world_origin);
+                     msg.header.stamp, m_name_world_origin, tgt_gt, eagle_gt);
             ROS_INFO_THROTTLE(1.0, "[%s]: visualising sphere...", m_nodename.c_str());
             visualise_sphere(state.head(3), msg.header.stamp, m_name_world_origin);
         }
@@ -614,8 +692,9 @@ namespace masters {
 
     void Masters::postproc(const Eigen::Matrix<double, 6, 1> state,
                            const Eigen::Matrix<double, 6, 6> covariance,
-                           const ros::Time &t,
-                           const std::string &frame) {
+                           const ros::Time &t, const std::string &frame,
+                           [[maybe_unused]]const dkf_ang_t::statecov_t &tgt_gt,
+                           [[maybe_unused]]const dkf_ang_t::statecov_t &eagle_gt) {
 //            TODO: save/publish an additional data here
         ROS_INFO_THROTTLE(1.0, "[%s]: visualising odometry...", m_nodename.c_str());
         visualise_odometry(state, covariance, t, frame);
@@ -675,16 +754,20 @@ namespace masters {
             const vec3 ks = Ds - Os;
 
             A.block<3, 3>(r_idx, 0) = Eigen::Matrix3d::Identity();
-            A.block<3, 3>(r_idx, 3) = Eigen::Matrix3d::Identity() * (t - m_t0).toSec();
+            A.block<3, 3>(r_idx, 3) = Eigen::Matrix3d::Identity() * (t - m_t0.value()).toSec();
             A.block<3, 1>(r_idx, 6 + r_idx / 3) = ks;
             b.segment<3>(r_idx) = Os;
 
             r_idx += 3;
         }
+        std::cout << "A: " << A << std::endl;
+        std::cout << "b: " << b << std::endl;
+
 //        Eigen::BDCSVD<Eigen::MatrixXd> SVD(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
         Eigen::JacobiSVD<Eigen::MatrixXd> SVD(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
 
         const Eigen::VectorXd x = SVD.solve(b);
+        std::cout << "x: " << x << std::endl;
         // Extract the first 3 elements of x to get the intersection point.
         const vec3 intersection = x.segment<3>(0);
         const vec3 speed = x.segment<3>(3);
@@ -693,92 +776,66 @@ namespace masters {
     }
 
     std::optional<cv::Point2d> Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
-        ROS_INFO_THROTTLE(1.0, "[%s]: detection started", m_nodename.c_str());
-        const auto msg_target_odom = m_subh_target_odom.getMsg();
-        const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
-        const auto ps_tgt = msg_target_odom->pose.pose.position;
-        const auto ps_eagle = msg_eagle_odom->pose.pose.position;
-
-        const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_target_odom->header.frame_id,
-                                                                    {ps_tgt.x, ps_tgt.y, ps_tgt.z},
-                                                                    m_name_world_origin,
-                                                                    msg->header.stamp);
-        const auto new_pose_eagle_opt = m_transformer.transformAsPoint(msg_eagle_odom->header.frame_id,
-                                                                       {ps_eagle.x, ps_eagle.y, ps_eagle.z},
-                                                                       m_name_world_origin,
-                                                                       msg->header.stamp);
-
-        Eigen::Vector3d dir_vec, dir_vec_tmp;
-        if (new_pose_eagle_opt.has_value()) {
-            Eigen::Vector3d pos_tgt = {ps_tgt.x, ps_tgt.y, ps_tgt.z};
-            const auto pos_eagle = new_pose_eagle_opt.value();
-            if (new_pose_st_opt.has_value()) {
-                const auto pos_tgt_auto = new_pose_st_opt.value();
-                pos_tgt = Eigen::Vector3d{pos_tgt_auto.x(), pos_tgt_auto.y(), pos_tgt_auto.z()};
-            }
-            dir_vec_tmp = pos_tgt - pos_eagle;
-            const auto new_dirvec = m_transformer.transformAsVector(m_name_world_origin,
-                                                                    dir_vec_tmp,
-                                                                    msg->header.frame_id,
-                                                                    msg->header.stamp);
-            if (new_dirvec.has_value()) {
-                dir_vec = new_dirvec.value();
-            } else {
-                ROS_ERROR("[%s]: unexpected error: no direction vector", m_nodename.c_str());
-            }
-        } else {
-            ROS_ERROR("[%s]: pose transformation for detection init has no value", m_nodename.c_str());
-            return std::nullopt;
+        cv::Point2d pt;
+        double theta;
+        dkf_ang_t::statecov_t tgt_gt, eagle_gt;
+        auto res = m_detect_uav_with_angle(msg);
+        if (res.has_value()) {
+            std::tie(pt, theta, tgt_gt, eagle_gt) = res.value();
+            return pt;
         }
-        if (dir_vec.z() < 0) {
-            ROS_ERROR("[%s]: pose is behind the image plane", m_nodename.c_str());
-            return std::nullopt;
-        }
-        const auto pt_ideal = m_camera_main.project3dToPixel(cv::Point3d(dir_vec.x(), dir_vec.y(), dir_vec.z()));
-        std::random_device rseed;
-        std::mt19937 rng(rseed());
-        std::normal_distribution<double> dist(m_mean, m_stddev);
-        double e_x = dist(rng), e_y = dist(rng);
-
-        const cv::Point2d pt_noisy{pt_ideal.x + e_x, pt_ideal.y + e_y};
-        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_main.cameraInfo().width or
-            pt_noisy.y < 0 or pt_noisy.y > m_camera_main.cameraInfo().height) {
-            return std::nullopt;
-        }
-        ROS_INFO_THROTTLE(1.0, "[%s]: uav detected", m_nodename.c_str());
-        // visualize detection
-        cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
-        cv::circle(image, pt_noisy, 20, cv::Scalar(255, 0, 0), 2);
-        m_pub_image_changed.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg());
-        return pt_noisy;
+        return std::nullopt;
     }
 
-    std::optional<std::pair<cv::Point2d, double>>
+    std::optional<std::tuple<cv::Point2d, double, Masters::dkf_ang_t::statecov_t, Masters::dkf_ang_t::statecov_t>>
     Masters::m_detect_uav_with_angle(const sensor_msgs::Image::ConstPtr &msg) {
         ROS_INFO_THROTTLE(1.0, "[%s]: detection started", m_nodename.c_str());
+        if (not(m_subh_eagle_odom.hasMsg() and m_subh_target_odom.hasMsg())) {
+            return std::nullopt;
+        }
         const auto msg_target_odom = m_subh_target_odom.getMsg();
         const auto msg_eagle_odom = m_subh_eagle_odom.getMsg();
 //        m_eagle_frame_name = "uav91/fcu";
         const auto ps_tgt = msg_target_odom->pose.pose.position;
+        const auto vl_tgt = msg_target_odom->twist.twist.linear;
         const auto ps_eagle = msg_eagle_odom->pose.pose.position;
+        const auto vl_eagle = msg_eagle_odom->twist.twist.linear;
 
         const auto new_pose_st_opt = m_transformer.transformAsPoint(msg_target_odom->header.frame_id,
                                                                     {ps_tgt.x, ps_tgt.y, ps_tgt.z},
+                                                                    m_name_world_origin,
+                                                                    msg->header.stamp);
+        const auto new_vel_st_opt = m_transformer.transformAsVector(msg_target_odom->header.frame_id,
+                                                                    {vl_tgt.x, vl_tgt.y, vl_tgt.z},
                                                                     m_name_world_origin,
                                                                     msg->header.stamp);
         const auto new_pose_eagle_opt = m_transformer.transformAsPoint(msg_eagle_odom->header.frame_id,
                                                                        {ps_eagle.x, ps_eagle.y, ps_eagle.z},
                                                                        m_name_world_origin,
                                                                        msg->header.stamp);
+        const auto new_vel_eagle_opt = m_transformer.transformAsVector(msg_eagle_odom->header.frame_id,
+                                                                       {vl_eagle.x, vl_eagle.y, vl_eagle.z},
+                                                                       m_name_world_origin,
+                                                                       msg->header.stamp);
 
+        dkf_ang_t::statecov_t tgt_gt, eagle_gt;
         Eigen::Vector3d dir_vec, dir_vec_tmp;
         if (new_pose_eagle_opt.has_value()) {
             Eigen::Vector3d pos_tgt = {ps_tgt.x, ps_tgt.y, ps_tgt.z};
+            Eigen::Vector3d vel_tgt = {vl_tgt.x, vl_tgt.y, vl_tgt.z};
             const auto pos_eagle = new_pose_eagle_opt.value();
+            const auto vel_eagle = new_vel_eagle_opt.value();
             if (new_pose_st_opt.has_value()) {
                 const auto pos_tgt_auto = new_pose_st_opt.value();
+                const auto vel_tgt_auto = new_vel_st_opt.value();
                 pos_tgt = Eigen::Vector3d{pos_tgt_auto.x(), pos_tgt_auto.y(), pos_tgt_auto.z()};
+                vel_tgt = Eigen::Vector3d{vel_tgt_auto.x(), vel_tgt_auto.y(), vel_tgt_auto.z()};
             }
+            eagle_gt.x.head(3) = Eigen::Vector3d{pos_eagle.x(), pos_eagle.y(), pos_eagle.z()};
+            eagle_gt.x.segment<3>(3) = Eigen::Vector3d{vel_eagle.x(), vel_eagle.y(), vel_eagle.z()};
+            tgt_gt.x.head(3) = pos_tgt;
+            tgt_gt.x.segment<3>(3) = vel_tgt;
+
             dir_vec_tmp = pos_tgt - pos_eagle;
             const auto new_dirvec = m_transformer.transformAsVector(m_name_world_origin,
                                                                     dir_vec_tmp,
@@ -816,8 +873,9 @@ namespace masters {
         const auto pt_l = m_camera_main.project3dToPixel(cv::Point3d{dir_vec.x() - m_tgt_w, dir_vec.y(), dir_vec.z()});
         const auto pt_r = m_camera_main.project3dToPixel(cv::Point3d{dir_vec.x() + m_tgt_w, dir_vec.y(), dir_vec.z()});
         // to avoid zero here because the "fake" tracking is used for the task
-        if (pt_l.x < pt_r.x) {
+        if (pt_l.x > pt_r.x) {
             ROS_ERROR("[%s]: the bbox is wrong.", m_nodename.c_str());
+            return std::nullopt;
         }
         const double s = std::max(pt_l.x - pt_r.x, 1.0);
 
@@ -825,13 +883,14 @@ namespace masters {
                 (vec_l.norm() * vec_l.norm() + vec_r.norm() * vec_r.norm() - s * s) / (2 * vec_l.norm() * vec_r.norm());
 
         const double theta = std::acos(cos_theta);
+        std::cout << "ANGLE = " << theta * 180 / 3.14 << std::endl;
 
         ROS_INFO_THROTTLE(1.0, "[%s]: uav detected", m_nodename.c_str());
         // visualize detection
         cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
         cv::circle(image, pt_noisy, 20, cv::Scalar(255, 0, 0), 2);
         m_pub_image_changed.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg());
-        return std::pair{pt_noisy, theta};
+        return std::tuple{pt_noisy, theta, tgt_gt, eagle_gt};
     }
 
     void Masters::visualise_odometry(const Eigen::Matrix<double, 6, 1> state,

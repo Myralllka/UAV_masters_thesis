@@ -135,6 +135,7 @@ namespace masters {
         virtual void onInit();
 
         using dkf_t = DKF<6, 0>;
+        using dkf_ang_t = DKF<7, 0>;
     private:
         /* flags */
         bool m_is_initialized = false;
@@ -145,8 +146,10 @@ namespace masters {
         double m_correction_th;
         double m_time_th;
         double m_dt;
+        double m_angle_variance;
+        double m_obj_size_variance;
         int m_history_buf_size;
-        ros::Time m_t0;
+        std::optional<ros::Time> m_t0;
 
 //
         double m_tgt_h;
@@ -205,7 +208,11 @@ namespace masters {
 
 
         // | --------------------- timer callbacks -------------------- |
-        void update_kalman(Eigen::Vector3d detection_vec, double subtended_angle, ros::Time detection_time);
+        void update_kalman(Eigen::Vector3d detection_vec,
+                           double subtended_angle,
+                           ros::Time detection_time,
+                           const dkf_ang_t::statecov_t &tgt_gt,
+                           const dkf_ang_t::statecov_t &eagle_gt);
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
@@ -231,14 +238,21 @@ namespace masters {
 
         // | --------------------- other functions -------------------- |
 
-        std::optional<std::pair<cv::Point2d, double>> m_detect_uav_with_angle(const sensor_msgs::Image::ConstPtr &msg);
+        std::optional<std::tuple<cv::Point2d, double, Masters::dkf_ang_t::statecov_t, Masters::dkf_ang_t::statecov_t>>
+        m_detect_uav_with_angle(const sensor_msgs::Image::ConstPtr &msg);
 
         std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
 
         dkf_t m_dkf = dkf_t();
+        dkf_ang_t m_dkf_ang = dkf_ang_t();
         dkf_t::statecov_t m_state_vec;
-        Eigen::Matrix<double, 7, 1> m_state_vec_t_x;
-        Eigen::Matrix<double, 7, 7> m_state_vec_t_P;
+        dkf_ang_t::statecov_t m_state_vec_ang;
+        std::mutex m_mut_tgt_gt;
+        dkf_ang_t::statecov_t m_tgt_gt;
+        dkf_ang_t::statecov_t m_eagle_gt;
+        bool m_gt_used = true;
+        std::condition_variable m_cv;
+
 
         void visualise_odometry(const Eigen::Matrix<double, 6, 1> state,
                                 const Eigen::Matrix<double, 6, 6> covariance,
@@ -252,10 +266,10 @@ namespace masters {
 
         void visualise_sphere(const Eigen::Vector3d &pos, const ros::Time &t, const std::string &frame);
 
-        void postproc(const Eigen::Matrix<double, 6, 1> state,
-                      const Eigen::Matrix<double, 6, 6> covariance,
-                      const ros::Time &t,
-                      const std::string &frame);
+        void postproc(const Eigen::Matrix<double, 6, 1> state, const Eigen::Matrix<double, 6, 6> covariance,
+                      const ros::Time &t, const std::string &frame,
+                      const dkf_ang_t::statecov_t &tgt_gt,
+                      const dkf_ang_t::statecov_t &eagle_gt);
 
         std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
         plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,
@@ -281,6 +295,14 @@ namespace masters {
                         const double theta,
                         const Eigen::Vector3d &lmb);
 
+        dkf_ang_t::statecov_t
+        dkf_pt_predict(const dkf_ang_t::statecov_t &sc,
+                       const double &dt);
+
+        Masters::dkf_ang_t::statecov_t
+        dkf_pt_correct(const dkf_ang_t::statecov_t &sc, const Eigen::Vector3d &line_origin,
+                       const Eigen::Vector3d &line_direction, const double &ang);
+
         // https://gist.github.com/javidcf/25066cf85e71105d57b6
         template<class MatT>
         Eigen::Matrix<typename MatT::Scalar, MatT::ColsAtCompileTime, MatT::RowsAtCompileTime>
@@ -305,7 +327,7 @@ namespace masters {
 
         template<class MatT>
         Eigen::Matrix<typename MatT::Scalar, MatT::ColsAtCompileTime, MatT::RowsAtCompileTime>
-        invert_mat(MatT W) {
+        invert_mat(MatT W) const {
             Eigen::ColPivHouseholderQR<MatT> qr(W);
             if (!qr.isInvertible()) {
                 // add some stuff to the tmp matrix diagonal to make it invertible
