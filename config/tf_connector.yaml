@@ -11,10 +11,10 @@ connecting_frame_id:
 # these are the tf subtrees to be connected through the respective root frames so that the equal frames are equal
 connections:
   - root_frame_id: "uav2/fcu"
-    equal_frame_id: "uav2/world_origin"
+    equal_frame_id: "uav2/ground_truth_origin"
 
   - root_frame_id: "uav91/fcu"
-    equal_frame_id: "uav91/world_origin"
+    equal_frame_id: "uav91/ground_truth_origin"
 
   # you can add further connections here:
   # - root_frame_id: "another_root"

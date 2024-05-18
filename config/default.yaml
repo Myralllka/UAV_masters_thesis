@@ -5,21 +5,38 @@ world_point:
   y: 0.0
   z: 0.0
 
-# for plkf and plkft
-s_Q_acc: 1
-#s_Q_vel: 0.001
-s_R: 0.001
-s_P0_position: 0.001
-s_P0_velocity: 0.01
-dkf_var: 0.05
+s_P0_position: 0.01
+s_P0_velocity: 0.0001
 
-# for dkf
-#s_Q_acc: 0.00001
-##s_Q_vel: 0.001
-#s_R: 0.11
-#s_P0_position: 0.001
-#s_P0_velocity: 0.0001
+# for plkft and dkft circle (scenario 1)
+#s_Q_acc: 0.001
+#s_R: 0.00001
+#bearing_var: 0.00001
 #dkf_var: 0.05
+
+# for dkf and dkft for helix
+#s_Q_acc: 1
+#s_R: 0.05
+#bearing_var: 0.01
+#dkf_var: 0.1
+
+#plkf plkft for helix
+s_Q_acc: 1
+s_R: 0.05
+bearing_var: 0.01
+dkf_var: 0.1
+
+# PLKF PLKFT and DKF DKFT for pure pursuit (2 3 scenarios vut only plkft!)
+#s_Q_acc: 10
+#s_R: 0.005
+#bearing_var: 0.05
+#dkf_var: 0.1
+
+# DKFT/DKF for pure pursuit (scenario 3)
+#s_Q_acc: 10
+#s_R: 10
+#bearing_var: 0.05
+#dkf_var: 0.5
 
 rate:
   # how often to publish my topic?

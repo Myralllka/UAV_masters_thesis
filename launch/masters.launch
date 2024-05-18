@@ -35,7 +35,7 @@
       <param name="gui" type="bool" value="$(arg gui)"/>
 
       <param name="UAV_NAME" type="string" value="$(arg UAV_NAME)"/>
-      <param name="world_origin" type="string" value="$(arg UAV_NAME)/world_origin"/>
+      <param name="world_origin" type="string" value="common_origin"/>
 
       <param name="eagle_name" type="string" value="$(arg UAV_NAME)"/>
       <param name="target_name" type="string" value="$(arg TGT_NAME)"/>
@@ -43,8 +43,8 @@
 <!--  was never really used -->
       <param name="lidar_tracker" type="string" value="/$(arg UAV_NAME)/lidar_tracker/tracks"/>
 <!--  For the rosbags recorded before -->
-      <param name="eagle_gt_odometry" type="string" value="/$(arg UAV_NAME)/estimation_manager/ground_truth/odom"/>
-      <param name="target_gt_odometry" type="string" value="/$(arg TGT_NAME)/estimation_manager/ground_truth/odom"/>
+      <param name="eagle_gt_odometry" type="string" value="/$(arg UAV_NAME)/estimation_manager/rtk/odom"/>
+      <param name="target_gt_odometry" type="string" value="/$(arg TGT_NAME)/estimation_manager/rtk/odom"/>
       <param name="main_camera" type="string" value="/$(arg UAV_NAME)/bluefox_front"/>
 
 <!--  For the simulation -->

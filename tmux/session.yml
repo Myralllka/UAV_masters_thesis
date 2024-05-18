@@ -29,7 +29,7 @@ windows:
   - spawn:
       layout: tiled
       panes:
-        - export UAV_TYPE=eaglemk2; waitForGazebo; rosservice call /mrs_drone_spawner/spawn "91 --eaglemk2 --enable-rangefinder --pos_file `rospack find masters`/tmux/uav_spawn_positions.csv --enable-ground-truth --enable-realsense-down --enable-realsense-front-pitched"
+        - export UAV_TYPE=eaglemk2; waitForGazebo; rosservice call /mrs_drone_spawner/spawn "91 --eaglemk2 --enable-rangefinder --pos_file `rospack find masters`/tmux/uav_spawn_positions.csv --enable-ground-truth --enable-realsense-down --enable-realsense-front-pitched --enable-bluefox-camera-front"
         - waitForGazebo; rosservice call /mrs_drone_spawner/spawn "2  --f550 --enable-rangefinder --pos_file `rospack find masters`/tmux/uav_spawn_positions.csv --enable-ground-truth"
   - hw_api:
       layout: tiled

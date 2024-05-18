@@ -143,6 +143,8 @@ namespace masters {
         bool m_is_real_world = false;
         double m_mean;
         double m_stddev;
+        double m_eagle_stddev;
+        double m_tgt_stddev;
         double m_correction_th;
         double m_time_th;
         double m_dt;
@@ -156,6 +158,7 @@ namespace masters {
         double m_tgt_w;
 
         std::string m_image_transport_hint;
+        std::string m_scenario;
 
         /* ros parameters */
 //        std::string m_uav_name;
@@ -170,7 +173,10 @@ namespace masters {
         std::string m_name_lidar_tracker;
         std::string m_approach;
         std::string m_eagle_frame_name;
+        std::string m_fnamestream;
         const std::string m_nodename = "Masters";
+        std::fstream m_logfile;
+        double m_init_tgt_width;
 
         /* other parameters */
         image_geometry::PinholeCameraModel m_camera_main;
@@ -208,11 +214,9 @@ namespace masters {
 
 
         // | --------------------- timer callbacks -------------------- |
-        void update_kalman(Eigen::Vector3d detection_vec,
-                           double subtended_angle,
-                           ros::Time detection_time,
-                           const dkf_ang_t::statecov_t &tgt_gt,
-                           const dkf_ang_t::statecov_t &eagle_gt);
+        void update_kalman(Eigen::Vector3d detection_vec, double subtended_angle, ros::Time detection_time,
+                           const dkf_ang_t::statecov_t &tgt_gt, const dkf_ang_t::statecov_t &eagle_gt,
+                           ros::Time &ts_gt);
 
         // | ----------------------- publishers ----------------------- |
         ros::Publisher m_pub_image_changed;
@@ -232,7 +236,8 @@ namespace masters {
         ros::Subscriber m_sub_main_camera_detection;
         image_transport::Subscriber m_sub_main_camera;
 
-        double m_line_variance = 0.0;
+        double m_var_dkf_radius = 0.0;
+        double m_var_bearing_vector = 0.0;
 
         ros::Timer m_tim_kalman;
 
@@ -248,16 +253,15 @@ namespace masters {
         dkf_t::statecov_t m_state_vec;
         dkf_ang_t::statecov_t m_state_vec_ang;
         std::mutex m_mut_tgt_gt;
+        ros::Time m_gt_ts;
         dkf_ang_t::statecov_t m_tgt_gt;
         dkf_ang_t::statecov_t m_eagle_gt;
         bool m_gt_used = true;
         std::condition_variable m_cv;
 
 
-        void visualise_odometry(const Eigen::Matrix<double, 6, 1> state,
-                                const Eigen::Matrix<double, 6, 6> covariance,
-                                const ros::Time &t,
-                                const std::string &frame);
+        void visualise_odometry(const Eigen::Matrix<double, 6, 1> state, const Eigen::Matrix<double, 6, 6> covariance,
+                                const ros::Time &t, const std::string &frame, ros::Publisher &pb);
 
         void visualise_arrow(const Eigen::Vector3d &start,
                              const Eigen::Vector3d &end,
@@ -266,10 +270,8 @@ namespace masters {
 
         void visualise_sphere(const Eigen::Vector3d &pos, const ros::Time &t, const std::string &frame);
 
-        void postproc(const Eigen::Matrix<double, 6, 1> state, const Eigen::Matrix<double, 6, 6> covariance,
-                      const ros::Time &t, const std::string &frame,
-                      const dkf_ang_t::statecov_t &tgt_gt,
-                      const dkf_ang_t::statecov_t &eagle_gt);
+        void postproc(const dkf_ang_t::statecov_t &state, const ros::Time &t, const std::string &frame,
+                      const dkf_ang_t::statecov_t &tgt_gt, const dkf_ang_t::statecov_t &eagle_gt, ros::Time &ts);
 
         std::tuple<Eigen::Matrix<double, 6, 1>, Eigen::Matrix<double, 6, 6>>
         plkf_predict(const Eigen::Matrix<double, 6, 1> &xk_1,
