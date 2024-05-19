@@ -563,7 +563,8 @@ namespace masters {
 //        R(3, 3) = m_angle_variance;
 //        R(4, 4) = m_angle_variance;
 //        R(5, 5) = m_angle_variance;
-        Eigen::Matrix<double, 4, 4> R = Eigen::Matrix<double, 4, 4>::Identity() * m_var_bearing_vector * m_var_bearing_vector;
+        Eigen::Matrix<double, 4, 4> R =
+                Eigen::Matrix<double, 4, 4>::Identity() * m_var_bearing_vector * m_var_bearing_vector;
         R(3, 3) = m_angle_variance * m_angle_variance;
 
         Eigen::Matrix<double, 6, 6> ps = Hk * Pk_ * Hk.transpose() + E * R * E.transpose();
@@ -618,7 +619,8 @@ namespace masters {
         E.block<2, 3>(0, 0) = N.transpose();
         E.block<3, 3>(2, 3) = rk * Eigen::Matrix3d::Identity() * theta;
         E.block<3, 1>(5, 3) = -rk * line_direction;
-        Eigen::Matrix<double, 7, 7> temp = Eigen::Matrix<double, 7, 7>::Identity() * m_var_dkf_radius * m_var_dkf_radius;
+        Eigen::Matrix<double, 7, 7> temp =
+                Eigen::Matrix<double, 7, 7>::Identity() * m_var_dkf_radius * m_var_dkf_radius;
         temp.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * m_var_bearing_vector * m_var_bearing_vector;
         temp(6, 6) = m_angle_variance * m_angle_variance;
 
@@ -884,9 +886,10 @@ namespace masters {
         Eigen::Vector3d dir_vec, dir_vec_tmp;
         Eigen::Vector3d pos_tgt = {ps_tgt.x, ps_tgt.y, ps_tgt.z};
         Eigen::Vector3d vel_tgt = {vl_tgt.x, vl_tgt.y, vl_tgt.z};
-        Eigen::Vector3d pos_eagle = {ps_egl.x + e_x, ps_egl.y + e_y, ps_egl.z + e_z};
+        Eigen::Vector3d pos_eagle = {ps_egl.x, ps_egl.y, ps_egl.z};
+        Eigen::Vector3d pos_eagle_noisy = {ps_egl.x + e_x, ps_egl.y + e_y, ps_egl.z + e_z};
         Eigen::Vector3d vel_eagle = {vl_egl.x, vl_egl.y, vl_egl.z};
-        eagle_gt.x.head(3) = pos_eagle;
+        eagle_gt.x.head(3) = pos_eagle_noisy;
         eagle_gt.x.segment<3>(3) = vel_eagle;
         tgt_gt.x.head(3) = pos_tgt;
         tgt_gt.x.segment<3>(3) = vel_tgt;
