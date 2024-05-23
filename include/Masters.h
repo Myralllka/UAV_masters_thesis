@@ -189,6 +189,8 @@ namespace masters {
         Eigen::Vector3d m_position_last_correction;
         Eigen::Matrix<double, 6, 6> m_P0;
         Eigen::Matrix3d m_Q;
+        bool m_use_qpv;
+        Eigen::Matrix<double, 6, 6> m_Qpv;
         Eigen::Matrix3d m_R;
         ros::Time m_last_kalman_time{0};
         ros::Time m_time_prev_real;

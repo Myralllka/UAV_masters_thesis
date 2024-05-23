@@ -1,24 +1,27 @@
-dt_kalman: 0.05 # [s]
+dt_kalman: 0.01 # [s]
 mean: 0.0 # [s]
 deviation: 0 # [px}
-eagle_deviation: 0 # [m]
+eagle_deviation: 0.0 # [m]
 tgt_init_deviation: 0 # [m]
-correction_th: 0.1 # [m]
-time_th: 5 # [s], after how meny seconds the reinitialisation should be done
+correction_th: 0.01 # [m]
+time_th: 40 # [s], after how meny seconds the reinitialisation should be done
 history_size: 8
 angle_variance: 0.001 # [rad]
 object_size_variance: 0.0001
 
 approx_drone_size_for_bbox_height: 0.2 # [m] size of the drone from the center to the top/bottom
-approx_drone_size_for_bbox_width: 0.2 # [m] size of the drone from the center diagonally
-target_init_size: 0.4 # [m], ideal = 2 * width
+approx_drone_size_for_bbox_width: 0.4 # [m] size of the drone from the center diagonally
+target_init_size: 0.8 # [m], ideal = 2 * width
 real_world: False
 
+#
+#
+use_Qpv: True
 # image transport hints:
 # https://docs.ros.org/en/api/image_transport/html/classimage__transport_1_1TransportHints.html
-imhint: raw
+#imhint: raw
+imhint: compressed
 
 # svd-static, svd-dynamic, plkf, dkf, plkft, dkft
-approach: dkft
-
-scenario: sc4-t2
+approach: plkft
+scenario: real_world_corrected_angle-minidataset

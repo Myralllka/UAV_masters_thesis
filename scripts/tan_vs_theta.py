@@ -3,7 +3,7 @@ import numpy as np
 
 if __name__ == "__main__":
     plt.rc('lines', linewidth=2.5)
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(layout='constrained', figsize=(7, 4))
 
     for each in [0.2, 0.4, 0.6, 0.8, 1]:
         obj_size = [each] * 500  # [m] size of the uav in a real world
@@ -19,10 +19,11 @@ if __name__ == "__main__":
 
         # Using set_dashes() and set_capstyle() to modify dashing of an existing line.
         line1, = ax.plot(m, percent_diff, label=f'{each}m')
-    plt.xticks(np.linspace(0, 10 , 21))
-    plt.xlabel("Distance to the target, [m]")
-    plt.ylabel("Percentage error, [%]")
-    plt.title("The error between the object size estimated with and without tangent approximation")
-    ax.legend()
-    plt.grid()
-    plt.show()
+    plt.xticks(np.linspace(0, 10, 21))
+    plt.xlabel("Distance to the target, [m]", fontsize="11")
+    plt.ylabel("Percentage error, [%]", fontsize="11")
+    # plt.title("The error between the object size estimated with and without tangent approximation")
+    ax.legend(fontsize="11", loc="upper right")
+    plt.grid(which='major', axis='both', linestyle='-')
+    plt.savefig(f"angle_approx.pdf", format="pdf", bbox_inches="tight")
+    # plt.show()

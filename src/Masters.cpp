@@ -50,6 +50,7 @@ namespace masters {
         pl.loadParam("tgt_init_deviation", m_tgt_stddev);
         pl.loadParam("bearing_var", m_var_bearing_vector);
         pl.loadParam("target_init_size", tgt_s_init);
+        pl.loadParam("use_Qpv", m_use_qpv);
 
         if (!pl.loadedSuccessfully()) {
             ROS_ERROR("[%s]: failed to load non-optional parameters!", m_nodename.c_str());
@@ -156,6 +157,8 @@ namespace masters {
 
         ROS_INFO("New dynamic reconfigure values received.");
         m_Q = Eigen::Matrix<double, 3, 3>::Identity() * config.s_Q_acc;
+        m_Qpv = Eigen::Matrix<double, 6, 6>::Identity() * config.s_Q_pos;
+        m_Qpv.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * config.s_Q_vel;
         m_R = Eigen::Matrix3d::Identity() * config.s_R;
         m_state_vec.P = Eigen::Matrix<double, 6, 6>::Zero();
         m_state_vec.P.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * config.s_P0_position;
@@ -328,8 +331,8 @@ namespace masters {
         state_interceptor_new.segment<3>(3) = tw;
 
 //        TODO handle track loss and do the re-initialisation
-//        if (m_is_kalman_initialized and dt <= m_time_th) {
-        if (m_is_kalman_initialized) {
+        if (m_is_kalman_initialized and dt <= m_time_th) {
+//        if (m_is_kalman_initialized) {
             ROS_INFO_THROTTLE(5.0, "[%s]: kalman is initialised", m_nodename.c_str());
 
             if ((state_interceptor_new.head(3) - m_position_last_correction).norm() >= m_correction_th) {
@@ -345,7 +348,12 @@ namespace masters {
 
                     dkf_t::u_t u;
                     u.setZero();
-                    Eigen::Matrix<double, 6, 6> Q = B * m_Q * B.transpose();
+                    Eigen::Matrix<double, 6, 6> Q;
+                    if (m_use_qpv) {
+                        Q = m_Qpv;
+                    } else {
+                        Q = B * m_Q * B.transpose();
+                    }
                     try {
                         m_state_vec = m_dkf.predict(m_state_vec, u, Q, dt);
                     }
@@ -407,11 +415,11 @@ namespace masters {
             }
         } else {
             // initialise
+            ROS_INFO("[%s]: INITIALISING KALMAN", m_nodename.c_str());
             m_dkf = dkf_t(dkf_t::A_t::Identity(), dkf_t::B_t::Zero());
             m_dkf_ang = dkf_ang_t(dkf_ang_t::A_t::Identity(), dkf_ang_t::B_t::Zero());
             Eigen::Matrix<double, 6, 1> x_k;
             x_k.setZero();
-            ROS_INFO_THROTTLE(5.0, "[%s]: kalman initialise", m_nodename.c_str());
             if (not m_is_real_world and m_subh_target_odom.hasMsg()) {
                 std::random_device rseed;
                 std::mt19937 rng(rseed());
@@ -419,6 +427,7 @@ namespace masters {
                 double e_x = dist(rng), e_y = dist(rng), e_z = dist(rng);
                 x_k.head(3) = tgt_gt.x.segment<3>(0) + Eigen::Vector3d{e_x, e_y, e_z};
                 x_k.tail(3) = tgt_gt.x.segment<3>(3);
+//                x_k.tail(3) = Eigen::Vector3d{0, 0, 0};
 
                 m_state_vec.x = x_k;
                 m_state_vec.P = m_P0;
@@ -493,7 +502,13 @@ namespace masters {
         B.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * dt * dt / 2;
         B.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * dt;
         Eigen::Matrix<double, 6, 1> xk_ = A * xk_1;
-        Eigen::Matrix<double, 6, 6> Pk_ = A * Pk_1 * A.transpose() + B * m_Q * B.transpose();
+        Eigen::Matrix<double, 6, 6> Q;
+        if (m_use_qpv) {
+            Q = m_Qpv;
+        } else {
+            Q = B * m_Q * B.transpose();
+        }
+        Eigen::Matrix<double, 6, 6> Pk_ = A * Pk_1 * A.transpose() + Q;
         return {xk_, Pk_};
     }
 
@@ -532,7 +547,13 @@ namespace masters {
         B.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * dt * dt / 2;
         B.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * dt;
         Eigen::Matrix<double, 7, 7> sigma = Eigen::Matrix<double, 7, 7>::Identity();
-        sigma.block<6, 6>(0, 0) = B * m_Q * B.transpose();
+        Eigen::Matrix<double, 6, 6> Q;
+        if (m_use_qpv) {
+            Q = m_Qpv;
+        } else {
+            Q = B * m_Q * B.transpose();
+        }
+        sigma.block<6, 6>(0, 0) = Q;
         sigma(6, 6) = m_obj_size_variance;
         Eigen::Matrix<double, 7, 1> xk_ = A * xk_1;
         Eigen::Matrix<double, 7, 7> Pk_ = A * Pk_1 * A.transpose() + sigma;
@@ -589,7 +610,13 @@ namespace masters {
         B.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * dt * dt / 2;
         B.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity() * dt;
         Eigen::Matrix<double, 7, 7> sigma = Eigen::Matrix<double, 7, 7>::Identity();
-        sigma.block<6, 6>(0, 0) = B * m_Q * B.transpose();
+        Eigen::Matrix<double, 6, 6> Q;
+        if (m_use_qpv) {
+            Q = m_Qpv;
+        } else {
+            Q = B * m_Q * B.transpose();
+        }
+        sigma.block<6, 6>(0, 0) = Q;
         sigma(6, 6) = m_obj_size_variance;
         dkf_ang_t::statecov_t ret;
         ret.x = A * sc.x;
@@ -912,16 +939,29 @@ namespace masters {
         std::normal_distribution<double> dist_pt(m_mean, m_stddev);
         e_x = dist_pt(rng), e_y = dist_pt(rng);
 
+        double offset = 10;
         const cv::Point2d pt_noisy{pt_ideal.x + e_x, pt_ideal.y + e_y};
-        if (pt_noisy.x < 0 or pt_noisy.x > m_camera_main.cameraInfo().width or
-            pt_noisy.y < 0 or pt_noisy.y > m_camera_main.cameraInfo().height) {
+        if (pt_noisy.x < offset or pt_noisy.x > m_camera_main.cameraInfo().width - offset or
+            pt_noisy.y < offset or pt_noisy.y > m_camera_main.cameraInfo().height - offset) {
             return std::nullopt;
         }
         // compute the angle of the object
         // the optical frame is:
         // z fwd | x right | y down
-        const auto vec_l = Eigen::Vector3d{dir_vec.x() - m_tgt_w, dir_vec.y(), dir_vec.z()};
-        const auto vec_r = Eigen::Vector3d{dir_vec.x() + m_tgt_w, dir_vec.y(), dir_vec.z()};
+
+//        orthogonal projection matrix
+        const Eigen::Matrix3d rot = mrs_lib::geometry::rotationBetween(Eigen::Matrix<double, 3, 1>::UnitX(), dir_vec);
+        const Eigen::Vector3d rotated_dirvec = rot.transpose() * dir_vec;
+        std::cout << "rotated dirvec = " << rotated_dirvec << std::endl;
+        Eigen::Vector3d vec_l = rot * Eigen::Vector3d{rotated_dirvec.x() - m_tgt_w, rotated_dirvec.y(), rotated_dirvec.z()};
+        Eigen::Vector3d vec_r = rot * Eigen::Vector3d{rotated_dirvec.x() + m_tgt_w, rotated_dirvec.y(), rotated_dirvec.z()};
+        std::cout << "l vec = " << vec_l << std::endl;
+        std::cout << "r vec = " << vec_r << std::endl;
+
+//        const auto vec_l = Eigen::Vector3d{dir_vec.x() - m_tgt_w, dir_vec.y(), dir_vec.z()};
+//        const auto vec_r = Eigen::Vector3d{dir_vec.x() + m_tgt_w, dir_vec.y(), dir_vec.z()};
+//        const auto vec_l = Eigen::Vector3d{dir_vec.x() - m_tgt_w, dir_vec.y(), dir_vec.z()};
+//        const auto vec_r = Eigen::Vector3d{dir_vec.x() + m_tgt_w, dir_vec.y(), dir_vec.z()};
         const auto pt_l = m_camera_main.project3dToPixel(cv::Point3d{dir_vec.x() - m_tgt_w, dir_vec.y(), dir_vec.z()});
         const auto pt_r = m_camera_main.project3dToPixel(cv::Point3d{dir_vec.x() + m_tgt_w, dir_vec.y(), dir_vec.z()});
         // to avoid zero here because the "fake" tracking is used for the task
@@ -935,7 +975,7 @@ namespace masters {
                 (vec_l.norm() * vec_l.norm() + vec_r.norm() * vec_r.norm() - s * s) / (2 * vec_l.norm() * vec_r.norm());
 
         const double theta = std::acos(cos_theta);
-//        std::cout << "ANGLE = " << theta * 180 / 3.14 << std::endl;
+        std::cout << "ANGLE = " << theta * 180 / 3.14 << std::endl;
 
         ROS_INFO_THROTTLE(5.0, "[%s]: uav detected", m_nodename.c_str());
         // visualize detection
