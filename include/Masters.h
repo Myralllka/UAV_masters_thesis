@@ -37,6 +37,9 @@
 
 /* other important includes */
 #include <opencv2/core/eigen.hpp>
+#include <opencv2/core/types.hpp>
+#include <opencv2/tracking.hpp>
+#include <opencv2/imgproc.hpp>
 #include <cv_bridge/cv_bridge.h>
 #include <boost/circular_buffer.hpp>
 
@@ -249,6 +252,12 @@ namespace masters {
         m_detect_uav_with_angle(const sensor_msgs::Image::ConstPtr &msg);
 
         std::optional<cv::Point2d> m_detect_uav(const sensor_msgs::Image::ConstPtr &msg);
+
+        std::optional<std::pair<cv::Point2d, double>>
+        m_track_uav(const sensor_msgs::Image::ConstPtr &msg);
+        cv::Ptr<cv::Tracker> m_tracker = cv::TrackerMedianFlow::create();
+        std::optional<cv::Rect2d> m_bbox; // Should be updated to real bbox
+        bool m_vt_is_init = false;
 
         dkf_t m_dkf = dkf_t();
         dkf_ang_t m_dkf_ang = dkf_ang_t();

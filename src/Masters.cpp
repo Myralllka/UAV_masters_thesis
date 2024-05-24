@@ -877,6 +877,55 @@ namespace masters {
         return {intersection, speed};
     }
 
+    std::optional<std::pair<cv::Point2d, double>>
+    Masters::m_track_uav(const sensor_msgs::Image::ConstPtr &msg) {
+        // concept for visual tracking
+        cv::Mat image = cv_bridge::toCvCopy(msg, "bgr8")->image;
+
+        if (not m_vt_is_init and m_bbox.has_value()) {
+            m_tracker->init(image, m_bbox.value());
+            m_vt_is_init = true;
+        }
+
+        bool ok = m_tracker->update(image, m_bbox.value());
+
+        if (ok) {
+            cv::rectangle(image, m_bbox.value(), cv::Scalar(255, 0, 0), 2, 1);
+        } else {
+            putText(image,
+                    "Tracking failure detected",
+                    cv::Point(100, 80),
+                    cv::FONT_HERSHEY_SIMPLEX,
+                    0.75,
+                    cv::Scalar(0, 0, 255),
+                    2);
+        }
+
+        m_pub_image_changed.publish(cv_bridge::CvImage(std_msgs::Header(), "bgr8", image).toImageMsg());
+
+        if (ok) {
+            cv::Point2d left = cv::Point2d{m_bbox.value().x,
+                                           m_bbox.value().y + m_bbox.value().height / 2};
+            cv::Point2d right = cv::Point2d{m_bbox.value().x + m_bbox.value().width,
+                                            m_bbox.value().y + m_bbox.value().height / 2};
+            auto vec_l = m_camera_main.projectPixelTo3dRay(left);
+            auto vec_r = m_camera_main.projectPixelTo3dRay(right);
+            const double s = std::max(left.x - right.x, 1.0);
+            double norm_l = std::sqrt(vec_l.x * vec_l.x + vec_l.y * vec_l.y + vec_l.z * vec_l.z);
+            double norm_r = std::sqrt(vec_r.x * vec_r.x + vec_r.y * vec_r.y + vec_r.z * vec_r.z);
+            const double cos_theta = (norm_l * norm_l + norm_r * norm_r - s * s) / (2 * norm_l * norm_r);
+            const double theta = std::acos(cos_theta);
+            std::cout << "ANGLE TRACKING = " << theta * 180 / 3.14 << std::endl;
+            cv::Point2d res = cv::Point2d{m_bbox.value().x + m_bbox.value().width / 2,
+                                          m_bbox.value().y + m_bbox.value().height / 2};
+            return std::pair{res, theta};
+        } else {
+            return std::nullopt;
+        }
+        // publish the image with bbox
+
+    }
+
     std::optional<cv::Point2d> Masters::m_detect_uav(const sensor_msgs::Image::ConstPtr &msg) {
         cv::Point2d pt;
         double theta;
@@ -952,11 +1001,13 @@ namespace masters {
 //        orthogonal projection matrix
         const Eigen::Matrix3d rot = mrs_lib::geometry::rotationBetween(Eigen::Matrix<double, 3, 1>::UnitX(), dir_vec);
         const Eigen::Vector3d rotated_dirvec = rot.transpose() * dir_vec;
-        std::cout << "rotated dirvec = " << rotated_dirvec << std::endl;
-        Eigen::Vector3d vec_l = rot * Eigen::Vector3d{rotated_dirvec.x() - m_tgt_w, rotated_dirvec.y(), rotated_dirvec.z()};
-        Eigen::Vector3d vec_r = rot * Eigen::Vector3d{rotated_dirvec.x() + m_tgt_w, rotated_dirvec.y(), rotated_dirvec.z()};
-        std::cout << "l vec = " << vec_l << std::endl;
-        std::cout << "r vec = " << vec_r << std::endl;
+//        std::cout << "rotated dirvec = " << rotated_dirvec << std::endl;
+        Eigen::Vector3d vec_l =
+                rot * Eigen::Vector3d{rotated_dirvec.x() - m_tgt_w, rotated_dirvec.y(), rotated_dirvec.z()};
+        Eigen::Vector3d vec_r =
+                rot * Eigen::Vector3d{rotated_dirvec.x() + m_tgt_w, rotated_dirvec.y(), rotated_dirvec.z()};
+//        std::cout << "l vec = " << vec_l << std::endl;
+//        std::cout << "r vec = " << vec_r << std::endl;
 
 //        const auto vec_l = Eigen::Vector3d{dir_vec.x() - m_tgt_w, dir_vec.y(), dir_vec.z()};
 //        const auto vec_r = Eigen::Vector3d{dir_vec.x() + m_tgt_w, dir_vec.y(), dir_vec.z()};
