@@ -579,11 +579,6 @@ namespace masters {
         E.block<3, 3>(3, 0) = rk * Eigen::Matrix3d::Identity() * theta;
         E.block<3, 1>(3, 3) = -lmb;
 
-//        Eigen::Matrix<double, 6, 6> R = Eigen::Matrix<double, 6, 6>::Identity();
-//        R.block<3, 3>(0, 0) = m_R;
-//        R(3, 3) = m_angle_variance;
-//        R(4, 4) = m_angle_variance;
-//        R(5, 5) = m_angle_variance;
         Eigen::Matrix<double, 4, 4> R =
                 Eigen::Matrix<double, 4, 4>::Identity() * m_var_bearing_vector * m_var_bearing_vector;
         R(3, 3) = m_angle_variance * m_angle_variance;
@@ -652,13 +647,6 @@ namespace masters {
         temp(6, 6) = m_angle_variance * m_angle_variance;
 
         const Eigen::Matrix<double, 5, 5> R = E * temp * E.transpose();
-//        Eigen::Matrix<double, 5, 4> E = Eigen::Matrix<double, 5, 4>::Zero();
-//        E.block<2, 3>(0, 0) = N.transpose();
-//        E.block<3, 3>(2, 0) = rk * Eigen::Matrix3d::Identity() * theta;
-//        E.block<3, 1>(2, 3) = -rk * line_direction;
-//        Eigen::Matrix<double, 4, 4> temp = Eigen::Matrix4d::Identity() * m_var_dkf_radius;
-//        temp(3, 3) = m_angle_variance;
-//        const Eigen::Matrix<double, 5, 5> R = E * temp * E.transpose();
         // the correction phase
         dkf_ang_t::statecov_t ret;
         const dkf_ang_t::R_t W = H * sc.P * H.transpose() + R;
